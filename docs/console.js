@@ -5,12 +5,6 @@
 (function () {
   const { Shell, GameState, loadConfig, saveConfig } = window.SHELL;
 
-  const BANNER =
-    "   _      _           _      _    ___\n" +
-    "  (_)__  (_)__ ____  / /_   / |  /  _/\n" +
-    " / / _ \\/ / -_) __/ /_  _/ /  _|_/ /\n" +
-    "/_/_//_/_/\\__/\\__/   /_/  /_/ |_/___/";
-
   let state, scenarios;
 
   /* ---- training -------------------------------------------------- */
@@ -22,30 +16,35 @@
     return [
       { obj: "Identify which services the host exposes and their versions.",
         chk: (st) => (st.scanned[TARGET] || new Set()).has(22),
-        cmd: "nmap -sV " + TARGET,
+        runs: ["nmap -sV " + TARGET],
         hint: "Fingerprint the host with a version scan before anything else." },
       { obj: "Recover a valid login for the 'student' service account.",
         chk: (st) => hasCred(st, "student"),
-        cmd: "hydra -l student -P wordlists/common.txt ssh://" + TARGET,
+        runs: ["hydra -l student -P wordlists/common.txt ssh://" + TARGET],
         hint: "The account uses a weak seasonal password. An online dictionary attack against SSH will find it." },
       { obj: "Use the recovered credential to obtain an interactive foothold.",
         chk: (st) => hasSession(st, TARGET, "student"),
-        cmd: "ssh student@" + TARGET + "      (password from the previous step)",
+        runs: ["ssh student@" + TARGET],
+        note: "(when prompted, the password is summer2023)",
         hint: "Log in over SSH as the account whose password you just cracked." },
       { obj: "Enumerate the account's sudo rights and abuse them to reach root.",
         chk: (st) => hasSession(st, TARGET, "root"),
-        cmd: "sudo -l         then:    sudo find . -exec /bin/bash \\; -quit",
+        runs: ["sudo -l", "sudo find . -exec /bin/bash \\; -quit"],
         hint: "Check `sudo -l`. A whitelisted binary that can run other programs (GTFOBins) is a direct path to a root shell." },
       { obj: "Recover the proof artefact from the root account.",
         chk: (st) => st.config.completed.includes("TRN-SANDBOX"),
-        cmd: "cat /root/flag.txt",
+        runs: ["cat /root/flag.txt"],
         hint: "Read root's proof file now that you are uid 0." },
     ];
   }
 
   function guidance(task, diff) {
-    if (diff === "easy") C.write(C.c("    run: ", "grey") + C.c(task.cmd, "brightyellow"));
-    else if (diff === "medium") C.write(C.c("    hint: " + task.hint, "grey"));
+    if (diff === "easy") {
+      const pills = (task.runs || []).map((cmd) => C.tap(cmd, cmd, "pill")).join("");
+      C.write("    " + pills + (task.note ? " " + C.c(task.note, "grey") : ""));
+    } else if (diff === "medium") {
+      C.write(C.c("    hint: " + task.hint, "grey"));
+    }
   }
 
   async function runTraining(diff) {
@@ -104,16 +103,13 @@
   async function enterShell(net) {
     state.loadNetwork(net);
     C.clear();
-    C.box("ENGAGEMENT ACTIVE  ::  " + net.code, [
-      C.c(net.title, "white"),
-      C.c("Scope: " + net.subnet, "grey"),
-      "",
-      C.c("Your operator workstation is " + state.operatorHost.ip + ".", "grey"),
-      C.c("`help` lists tooling, `status` tracks progress, `back` exits.", "grey"),
-    ], 66);
+    C.write(C.c("  " + net.code, "accent", "bold") + C.c("   " + net.title, "grey"));
+    C.write(C.c("  scope " + net.subnet + "  ·  workstation " + state.operatorHost.ip, "grey"));
+    C.write(C.c("  tap ", "grey") + C.tap("menu", "menu", "cmd") + C.c(" for actions  ·  ", "grey") +
+            C.tap("back", "back") + C.c(" to exit", "grey"));
     C.write("");
     if (state.config.hints) {
-      C.write(C.c("  starting point: in-scope host(s) are reachable; begin with recon (nmap).", "grey"));
+      C.write(C.c("  start with recon: ", "grey") + C.tap("nmap -sV " + net.objective, "nmap -sV " + net.objective, "pill"));
       C.write("");
     }
     const sh = new Shell(state);
@@ -126,45 +122,64 @@
 
   /* ---- meta console --------------------------------------------- */
   const CONSOLE = {};
+  CONSOLE.menu = function () {
+    C.write("");
+    C.write(C.c("  menu", "accent", "bold") + C.c("   (tap to navigate)", "grey"));
+    C.hr(34);
+    const done = state.config.completed;
+    Object.keys(scenarios).forEach((code) => {
+      const n = scenarios[code];
+      const tag = done.includes(code) ? C.c("  ✓", "brightgreen") : "";
+      C.write("  " + C.tap("▸ engage " + code, "engage " + code, "cmd") + tag);
+      C.write("     " + C.c(n.title + "  ", "grey") + C.tap("brief", "brief " + code) + C.c("   " + n.difficulty, "grey"));
+    });
+    C.write("");
+    C.write("  " + C.c("training ", "white") + C.tap("easy", "training easy", "pill") +
+            C.tap("medium", "training medium", "pill") + C.tap("hard", "training hard", "pill"));
+    C.write("  " + C.tap("settings", "settings", "pill") + C.tap("status", "status", "pill") +
+            C.tap("help", "help", "pill"));
+    C.write("");
+  };
   CONSOLE.help = function () {
     C.write("");
-    [["scenarios", "list available engagements / targets"],
-    ["brief <code>", "read the briefing for an engagement"],
-    ["engage <code>", "deploy into the engagement's operator shell"],
+    C.write(C.c("  commands", "accent", "bold") + C.c("   (or tap ", "grey") + C.tap("menu", "menu", "cmd") + C.c(")", "grey"));
+    C.hr(34);
+    [["menu", "tappable navigation"],
+    ["scenarios", "list engagements / targets"],
+    ["brief <code>", "read an engagement briefing"],
+    ["engage <code>", "deploy into an engagement"],
     ["training [tier]", "guided modules (easy | medium | hard)"],
-    ["status", "your progress and recovered objectives"],
+    ["status", "progress and recovered objectives"],
     ["settings", "display & interaction preferences"],
     ["clear", "clear the screen"],
-    ].forEach(([k, v]) => C.write("  " + C.c(k.padEnd(16), "cyan", "bold") + C.c(v, "white")));
+    ].forEach(([k, v]) => C.write("  " + C.c(k.padEnd(16), "cyan") + C.c(v, "grey")));
     C.write("");
   };
   CONSOLE.scenarios = function () {
     C.write("");
-    C.write(C.c("  AVAILABLE ENGAGEMENTS", "cyan", "bold"));
-    C.hr(60);
+    C.write(C.c("  engagements", "accent", "bold"));
+    C.hr(34);
     const done = state.config.completed;
     Object.keys(scenarios).forEach((code) => {
       const n = scenarios[code];
-      const tag = done.includes(code) ? C.c(" [resolved]", "brightgreen") : "";
-      C.write("  " + C.c(code.padEnd(12), "brightyellow", "bold") + C.c(n.difficulty.padEnd(24), "grey") + tag);
+      const tag = done.includes(code) ? C.c("  ✓ resolved", "brightgreen") : "";
+      C.write("  " + C.tap(code, "engage " + code, "cmd") + C.c("   " + n.difficulty, "grey") + tag);
       C.write("    " + C.c(n.title, "white"));
-      C.write("    " + C.c(n.summary, "grey"));
+      C.write("    " + C.c(n.summary, "grey") + "   " + C.tap("brief", "brief " + code));
       C.write("");
     });
-    C.write(C.c("  brief <code> for details, engage <code> to deploy.", "grey"));
-    C.write("");
   };
   CONSOLE.brief = function (args) {
-    if (!args.length) { C.write(C.c("usage: brief <code>  (see `scenarios`)", "red")); return; }
+    if (!args.length) { C.write(C.c("usage: brief <code>", "red")); return; }
     const n = scenarios[args[0].toUpperCase()];
     if (!n) { C.write(C.c("no engagement '" + args[0] + "'.", "red")); return; }
     C.write("");
-    C.box(n.code + "  ::  " + n.difficulty, [], 66);
-    C.write(C.c(n.title, "brightyellow", "bold"));
-    C.write("");
+    C.write(C.c("  " + n.code, "accent", "bold") + C.c("   " + n.difficulty, "grey"));
+    C.write("  " + C.c(n.title, "white"));
+    C.hr(34);
     n.brief.split("\n").forEach((ln) => C.write("  " + C.escapeHtml(ln)));
     C.write("");
-    C.write(C.c("  engage " + n.code + "   to begin.", "cyan"));
+    C.write("  " + C.tap("engage " + n.code, "engage " + n.code, "cmd"));
     C.write("");
   };
   CONSOLE.engage = async function (args) {
@@ -177,14 +192,13 @@
     let tier = args.length ? args[0].toLowerCase() : null;
     if (!["easy", "medium", "hard"].includes(tier)) {
       C.write("");
-      C.write(C.c("  TRAINING MODULES", "cyan", "bold"));
-      C.hr(48);
-      C.write("  " + C.c("easy".padEnd(8), "brightgreen", "bold") + C.c("full command walkthrough", "white"));
-      C.write("  " + C.c("medium".padEnd(8), "brightyellow", "bold") + C.c("conceptual hints only", "white"));
-      C.write("  " + C.c("hard".padEnd(8), "brightred", "bold") + C.c("objectives only -- no guidance", "white"));
+      C.write(C.c("  training", "accent", "bold") + C.c("   (tap a tier)", "grey"));
+      C.hr(34);
+      C.write("  " + C.tap("easy", "training easy", "cmd") + C.c("    full command walkthrough", "grey"));
+      C.write("  " + C.tap("medium", "training medium", "cmd") + C.c("  conceptual hints only", "grey"));
+      C.write("  " + C.tap("hard", "training hard", "cmd") + C.c("    objectives only — no guidance", "grey"));
       C.write("");
-      tier = (await C.readLine(C.c("  select tier (easy/medium/hard): ", "cyan"))).trim().toLowerCase();
-      if (!["easy", "medium", "hard"].includes(tier)) { C.write(C.c("  cancelled.", "grey")); return; }
+      return;
     }
     await runTraining(tier);
   };
@@ -245,18 +259,20 @@
   async function consoleLoop() {
     while (true) {
       const op = state.operator;
-      const prompt = C.c(op, "brightcyan", "bold") + C.c("@", "grey") + C.c("injectai", "cyan") + C.c(" > ", "grey");
+      const prompt = C.c(op, "brightgreen", "bold") + C.c("@", "grey") + C.c("injectai", "accent") + C.c(" $ ", "grey");
       const raw = await C.readLine(prompt);
       const line = raw.trim();
       if (!line) continue;
       const parts = line.split(/\s+/);
       let name = parts[0].toLowerCase();
       if (name === "exit" || name === "quit" || name === "logout") {
-        C.write(C.c("session closed. (refresh the page to start a new session)", "grey")); return;
+        C.write(C.c("session closed — reloading…", "grey"));
+        setTimeout(() => location.reload(), 500); return;
       }
+      if (name === "back") continue;   // no-op at the top level
       name = ALIASES[name] || name;
       const fn = CONSOLE[name];
-      if (!fn) { C.write(C.c(parts[0] + ": unknown command. Type `help`.", "red")); continue; }
+      if (!fn) { C.write(C.c(parts[0] + ": command not found", "red")); continue; }
       await fn(parts.slice(1));
     }
   }
@@ -268,18 +284,9 @@
     state = new GameState(cfg);
     scenarios = window.WORLD.allScenarios();
     C.clear();
-    C.write(C.c(BANNER, "brightcyan"));
-    C.write(C.c("  injectAI  ", "brightcyan", "bold") + C.c("offensive security operations console", "grey"));
-    C.write(C.c("  ────────────────────────────────────────────────", "grey"));
-    const seq = ["loading tooling profiles", "mounting engagement catalogue",
-      "initialising virtual network fabric", "operator workstation online"];
-    for (const line of seq) {
-      C.write(C.c("  [ok] ", "brightgreen") + C.c(line, "grey"));
-      await C.sleep(120);
-    }
-    C.write("");
-    C.write(C.c("  Authorised simulation environment. No real systems are", "grey"));
-    C.write(C.c("  contacted. Type `help` to begin, `scenarios` to list targets.", "grey"));
+    C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell", "grey"));
+    C.write(C.c("type ", "grey") + C.tap("menu", "menu", "cmd") + C.c(" to navigate, or ", "grey") +
+            C.tap("help", "help", "cmd") + C.c(" for commands.", "grey"));
     C.write("");
     await consoleLoop();
   }

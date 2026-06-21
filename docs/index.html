@@ -2,104 +2,121 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>injectAI — operations console</title>
-  <meta name="description" content="injectAI: a terminal-style offensive security operations simulator. Fully simulated; no real systems are contacted." />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="theme-color" content="#000000" />
+  <title>injectAI</title>
   <style>
     :root {
-      --bg: #0a0e0a;
-      --panel: #0d130d;
-      --fg: #c8d6c8;
-      --green: #35d07f; --brightgreen: #5dff9e;
-      --red: #ff5f56; --brightred: #ff8a80;
-      --yellow: #e0c046; --brightyellow: #ffe066;
-      --blue: #6aa9ff; --brightblue: #8fc1ff;
-      --cyan: #36c5d0; --brightcyan: #66e6f0;
-      --magenta: #c678dd;
-      --grey: #6b7a6b; --white: #e6efe6;
+      --bg: #000;
+      --fg: #d6dbd6;
+      --muted: #7c887c;
+      --accent: #4cd07a;
+      --accent2: #57c7d4;
+      --key: #16181a;
+      --key2: #232629;
+      --keyline: #2b2f33;
+      --green: #4cd07a; --brightgreen: #74f29a;
+      --red: #ff6b66; --brightred: #ff9b95;
+      --yellow: #e6c25a; --brightyellow: #ffd874;
+      --blue: #6fa8ff; --brightblue: #9cc4ff;
+      --cyan: #57c7d4; --brightcyan: #84e6f0;
+      --magenta: #c98be0; --grey: #6f7a6f; --white: #f0f4f0;
     }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      overflow: hidden; overscroll-behavior: none;
+    }
     body {
-      background: radial-gradient(1200px 700px at 50% -10%, #0f1a10 0%, var(--bg) 60%);
-      color: var(--fg);
-      font-family: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-      font-size: 14px; line-height: 1.45;
+      position: fixed; inset: 0;
       display: flex; flex-direction: column;
+      font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 14px; line-height: 1.5;
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      padding-top: env(safe-area-inset-top);
+      -webkit-user-select: none; user-select: none;
     }
-    #frame {
-      flex: 1; display: flex; flex-direction: column;
-      max-width: 980px; width: 100%; margin: 0 auto; padding: 10px;
-      min-height: 0;
-    }
-    #titlebar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 7px 12px; border-radius: 8px 8px 0 0;
-      background: #0b110b; border: 1px solid #1c2a1c; border-bottom: none;
-      color: var(--grey); font-size: 12px;
-    }
-    .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
-    .dot.r { background: #ff5f56; } .dot.y { background: #ffbd2e; } .dot.g { background: #27c93f; }
-    #titlebar .who { margin-left: 8px; }
-    #titlebar .right { margin-left: auto; opacity: .8; }
     #screen {
-      flex: 1; overflow-y: auto; min-height: 0;
-      background: var(--panel);
-      border: 1px solid #1c2a1c; border-top: none;
-      padding: 12px 14px;
-      box-shadow: inset 0 0 80px rgba(0,0,0,.5);
+      flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 12px 14px 4px;
     }
     #out .line { white-space: pre-wrap; word-break: break-word; }
-    #inputline {
-      display: flex; align-items: baseline; gap: 6px;
-      background: var(--panel);
-      border: 1px solid #1c2a1c; border-top: none;
-      border-radius: 0 0 8px 8px;
-      padding: 8px 14px 12px;
+    #liveline {
+      flex: 0 0 auto; white-space: pre-wrap; word-break: break-word;
+      padding: 2px 14px 8px; min-height: 1.5em;
     }
-    #prompt { white-space: pre; }
-    #cmd {
-      flex: 1; background: transparent; border: none; outline: none;
-      color: var(--brightgreen); font: inherit; caret-color: var(--brightgreen);
+    .buf { color: var(--white); }
+    .cur {
+      display: inline-block; width: 8px; height: 1.05em; vertical-align: text-bottom;
+      background: var(--accent); margin-left: 1px; animation: blink 1.1s steps(1) infinite;
     }
-    /* colour classes */
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* tappable command links */
+    .tap {
+      color: var(--accent2); border-bottom: 1px solid rgba(87,199,212,.35);
+      padding: 1px 0; cursor: pointer;
+    }
+    .tap.cmd { color: var(--brightgreen); border-bottom-color: rgba(116,242,154,.4); }
+    .tap:active { opacity: .6; }
+    .pill {
+      display: inline-block; color: var(--brightgreen);
+      border: 1px solid var(--keyline); border-radius: 6px;
+      padding: 4px 10px; margin: 3px 6px 3px 0; cursor: pointer;
+    }
+    .pill:active { background: var(--key2); }
+
+    /* on-screen keyboard */
+    #keyboard {
+      flex: 0 0 auto; background: #050606; border-top: 1px solid var(--keyline);
+      padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+      display: flex; flex-direction: column; gap: 6px;
+      touch-action: manipulation;
+    }
+    .kbrow { display: flex; gap: 6px; justify-content: center; }
+    .key {
+      flex: 1 1 0; min-width: 0; height: 42px;
+      background: var(--key2); color: var(--white);
+      border: 1px solid var(--keyline); border-radius: 7px;
+      font: inherit; font-size: 16px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0; cursor: pointer; user-select: none;
+      box-shadow: 0 1px 0 #000;
+    }
+    .key.mod { background: var(--key); color: var(--muted); font-size: 13px; flex: 0 0 13%; }
+    .key.act { background: var(--key); color: var(--accent2); font-size: 12.5px; height: 34px; }
+    .key.space { flex: 1 1 46%; color: var(--muted); font-size: 13px; }
+    .key.enter { color: var(--bg); background: var(--accent); border-color: var(--accent); flex: 0 0 22%; }
+    .key.on { background: var(--accent); color: #000; border-color: var(--accent); }
+    .key.press { background: var(--accent2); color: #000; }
+    @media (min-width: 760px) {
+      #keyboard { max-width: 720px; margin: 0 auto; width: 100%; }
+      .key { height: 38px; }
+    }
+
+    /* colours */
     .green { color: var(--green); } .brightgreen { color: var(--brightgreen); }
     .red { color: var(--red); } .brightred { color: var(--brightred); }
     .yellow { color: var(--yellow); } .brightyellow { color: var(--brightyellow); }
     .blue { color: var(--blue); } .brightblue { color: var(--brightblue); }
     .cyan { color: var(--cyan); } .brightcyan { color: var(--brightcyan); }
-    .magenta { color: var(--magenta); }
-    .grey { color: var(--grey); } .white { color: var(--white); }
-    .bold { font-weight: 700; }
-    .dim { opacity: .7; }
-    body.nocolour .green, body.nocolour .brightgreen, body.nocolour .red,
-    body.nocolour .brightred, body.nocolour .yellow, body.nocolour .brightyellow,
-    body.nocolour .blue, body.nocolour .brightblue, body.nocolour .cyan,
-    body.nocolour .brightcyan, body.nocolour .magenta, body.nocolour .grey,
-    body.nocolour .white { color: var(--fg) !important; }
-    #screen::-webkit-scrollbar { width: 10px; }
-    #screen::-webkit-scrollbar-thumb { background: #1c2a1c; border-radius: 5px; }
-    .hintbar { text-align: center; color: var(--grey); font-size: 11px; padding: 6px 0 2px; }
-    @media (max-width: 640px) { body { font-size: 12.5px; } #frame { padding: 4px; } }
+    .magenta { color: var(--magenta); } .grey { color: var(--grey); }
+    .white { color: var(--white); } .accent { color: var(--accent); }
+    .bold { font-weight: 600; } .dim { opacity: .7; }
+    body.nocolour [class*="green"], body.nocolour [class*="red"], body.nocolour [class*="yellow"],
+    body.nocolour [class*="blue"], body.nocolour [class*="cyan"], body.nocolour [class*="magenta"],
+    body.nocolour .grey, body.nocolour .white, body.nocolour .accent { color: var(--fg) !important; }
+
+    #screen::-webkit-scrollbar { width: 0; }
   </style>
 </head>
 <body>
-  <div id="frame">
-    <div id="titlebar">
-      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="who">operator@injectai — secure shell</span>
-      <span class="right">simulation · offline</span>
-    </div>
-    <div id="screen">
-      <div id="out"></div>
-    </div>
-    <div id="inputline">
-      <span id="prompt"></span>
-      <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off"
-             spellcheck="false" aria-label="command input" />
-    </div>
-    <div class="hintbar">Type <b>help</b> · <b>scenarios</b> · <b>training</b> — fully simulated, nothing leaves your browser.</div>
-  </div>
+  <div id="screen"><div id="out"></div></div>
+  <div id="liveline"></div>
+  <div id="keyboard"></div>
 
   <script src="world.js"></script>
   <script src="app.js"></script>
