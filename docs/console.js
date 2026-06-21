@@ -339,7 +339,7 @@
     state = new GameState(cfg);
     scenarios = window.WORLD.allScenarios();
     C.clear();
-    C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell  ·  build 13", "grey"));
+    C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell  ·  build 14", "grey"));
     C.write(C.c("tap ", "grey") + C.tap("≡ menu", "menu", "cmd") + C.c(" · ", "grey") +
             C.tap("⌗ commands", "commands", "cmd") + C.c(" · ", "grey") +
             C.tap("AIH", "aih", "cmd") + C.c(" for guidance", "grey"));
