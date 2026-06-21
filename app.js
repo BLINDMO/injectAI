@@ -78,18 +78,22 @@ function beep(count = 3) {
   unlockAudio();
   if (!audioCtx) return;
   const t0 = audioCtx.currentTime;
-  const step = 0.16;
+  const dur = 0.55, gap = 0.22;                  // long, sustained alert tones
   for (let i = 0; i < count; i++) {
+    const s = t0 + i * (dur + gap);
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
     o.type = "square";
-    o.frequency.value = 784 + i * 130;           // ascending blips
-    const s = t0 + i * step;
+    // a slow high->low->high warble gives a classic alert/alarm character
+    o.frequency.setValueAtTime(1000, s);
+    o.frequency.linearRampToValueAtTime(840, s + dur * 0.5);
+    o.frequency.linearRampToValueAtTime(1000, s + dur);
     g.gain.setValueAtTime(0.0001, s);
-    g.gain.exponentialRampToValueAtTime(0.18, s + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.13);
+    g.gain.exponentialRampToValueAtTime(0.22, s + 0.03);    // attack
+    g.gain.setValueAtTime(0.22, s + dur - 0.08);            // sustain
+    g.gain.exponentialRampToValueAtTime(0.0001, s + dur);   // release
     o.connect(g); g.connect(audioCtx.destination);
-    o.start(s); o.stop(s + 0.14);
+    o.start(s); o.stop(s + dur + 0.02);
   }
 }
 
@@ -922,7 +926,7 @@ CMD.hydra = async function (args) {
   }
   this.emit("");
   if (willCrack) {
-    if (this._cap === null && this.state.config.sound !== false) beep(4);
+    if (this._cap === null && this.state.config.sound !== false) beep(3);
     this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user +
       "   password: " + u.password, "brightgreen", "bold"));
     this.emit(c("[STATUS] password recovered after " + TOTAL + " attempts", "grey"));
