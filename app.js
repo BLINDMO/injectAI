@@ -74,27 +74,27 @@ function unlockAudio() {
     if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
   } catch (e) { /* no audio available */ }
 }
-function beep(count = 3) {
+function beep() {
   unlockAudio();
   if (!audioCtx) return;
   const t0 = audioCtx.currentTime;
-  const dur = 0.55, gap = 0.22;                  // long, sustained alert tones
-  for (let i = 0; i < count; i++) {
-    const s = t0 + i * (dur + gap);
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = "square";
-    // a slow high->low->high warble gives a classic alert/alarm character
-    o.frequency.setValueAtTime(1000, s);
-    o.frequency.linearRampToValueAtTime(840, s + dur * 0.5);
-    o.frequency.linearRampToValueAtTime(1000, s + dur);
-    g.gain.setValueAtTime(0.0001, s);
-    g.gain.exponentialRampToValueAtTime(0.22, s + 0.03);    // attack
-    g.gain.setValueAtTime(0.22, s + dur - 0.08);            // sustain
-    g.gain.exponentialRampToValueAtTime(0.0001, s + dur);   // release
-    o.connect(g); g.connect(audioCtx.destination);
-    o.start(s); o.stop(s + dur + 0.02);
+  const total = 3.0;            // 3-second alert
+  const seg = 0.25;             // alternate every 250ms
+  const f1 = 960, f2 = 770;     // classic two-tone (hi / lo)
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = "square";
+  let t = t0, i = 0;
+  while (t < t0 + total) {
+    o.frequency.setValueAtTime(i % 2 === 0 ? f1 : f2, t);
+    t += seg; i++;
   }
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.03);
+  g.gain.setValueAtTime(0.2, t0 + total - 0.1);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + total);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t0); o.stop(t0 + total + 0.05);
 }
 
 /* ----------------------------------------------------------------------
@@ -921,15 +921,15 @@ CMD.hydra = async function (args) {
     for (let i = 1; i <= TOTAL; i++) {
       await sleep(delay);
       this.emit(c('[ATTEMPT] target ' + host.ip + ' - login "' + user + '" - pass "' + randPw() +
-        '" - ' + i + " of " + TOTAL + " [child " + (i % 16) + "]", "grey"));
+        '" [child ' + (i % 16) + "]", "grey"));
     }
   }
   this.emit("");
   if (willCrack) {
-    if (this._cap === null && this.state.config.sound !== false) beep(3);
+    if (this._cap === null && this.state.config.sound !== false) beep();
     this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user +
       "   password: " + u.password, "brightgreen", "bold"));
-    this.emit(c("[STATUS] password recovered after " + TOTAL + " attempts", "grey"));
+    this.emit(c("[STATUS] valid password recovered", "grey"));
     this.emit(c("1 of 1 target successfully completed, 1 valid password found", "brightgreen"));
     if (this.state.addCred(host.hostname + " " + service, user, u.password)) {
       this.emit(c("  -> credential stored in loot.", "grey"));
