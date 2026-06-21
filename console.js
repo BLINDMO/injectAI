@@ -136,8 +136,22 @@
     C.write("");
     C.write("  " + C.c("training ", "white") + C.tap("easy", "training easy", "pill") +
             C.tap("medium", "training medium", "pill") + C.tap("hard", "training hard", "pill"));
-    C.write("  " + C.tap("settings", "settings", "pill") + C.tap("status", "status", "pill") +
-            C.tap("help", "help", "pill"));
+    C.write("  " + C.tap("AIH — where to start", "aih", "pill") + C.tap("settings", "settings", "pill") +
+            C.tap("status", "status", "pill"));
+    C.write("");
+  };
+  CONSOLE.aih = function () {
+    C.write("");
+    C.write(C.c("  AIH", "accent", "bold") + C.c("  ·  where to start", "grey"));
+    C.hr(34);
+    const done = state.config.completed;
+    const next = Object.keys(scenarios).find((code) => !done.includes(code)) || "ORIONBUILD";
+    C.write("  " + C.c("• New here? Run the guided module first — it walks a full", "white"));
+    C.write("    " + C.c("compromise end to end.", "white") + " " + C.tap("training easy", "training easy", "pill"));
+    C.write("  " + C.c("• Then take on a live engagement:", "white"));
+    C.write("    " + C.tap("engage " + next, "engage " + next, "pill") + C.tap("scenarios", "scenarios", "pill"));
+    C.write("  " + C.c("• Inside an engagement, tap ", "white") + C.tap("≡ menu", "menu", "cmd") +
+            C.c(" → AIH for the next move.", "white"));
     C.write("");
   };
   CONSOLE.help = function () {
@@ -254,6 +268,7 @@
     targets: "scenarios", engagements: "scenarios", ls: "scenarios",
     info: "brief", connect: "engage", start: "engage",
     train: "training", learn: "training", config: "settings", progress: "status", "?": "help",
+    hint: "aih", hints: "aih",
   };
 
   async function consoleLoop() {
@@ -285,8 +300,8 @@
     scenarios = window.WORLD.allScenarios();
     C.clear();
     C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell", "grey"));
-    C.write(C.c("type ", "grey") + C.tap("menu", "menu", "cmd") + C.c(" to navigate, or ", "grey") +
-            C.tap("help", "help", "cmd") + C.c(" for commands.", "grey"));
+    C.write(C.c("tap ", "grey") + C.tap("≡ menu", "menu", "cmd") + C.c(" to navigate  ·  ", "grey") +
+            C.tap("AIH", "aih", "cmd") + C.c(" for guidance", "grey"));
     C.write("");
     await consoleLoop();
   }

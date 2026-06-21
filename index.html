@@ -72,29 +72,29 @@
     /* on-screen keyboard */
     #keyboard {
       flex: 0 0 auto; background: #050606; border-top: 1px solid var(--keyline);
-      padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-      display: flex; flex-direction: column; gap: 6px;
+      padding: 9px 6px calc(9px + env(safe-area-inset-bottom));
+      display: flex; flex-direction: column; gap: 8px;
       touch-action: manipulation;
     }
-    .kbrow { display: flex; gap: 6px; justify-content: center; }
+    .kbrow { display: flex; gap: 7px; justify-content: center; }
     .key {
-      flex: 1 1 0; min-width: 0; height: 42px;
+      flex: 1 1 0; min-width: 0; height: 54px;
       background: var(--key2); color: var(--white);
-      border: 1px solid var(--keyline); border-radius: 7px;
-      font: inherit; font-size: 16px; line-height: 1;
+      border: 1px solid var(--keyline); border-radius: 9px;
+      font: inherit; font-size: 19px; line-height: 1;
       display: flex; align-items: center; justify-content: center;
       padding: 0; cursor: pointer; user-select: none;
-      box-shadow: 0 1px 0 #000;
+      box-shadow: 0 2px 0 #000;
     }
-    .key.mod { background: var(--key); color: var(--muted); font-size: 13px; flex: 0 0 13%; }
-    .key.act { background: var(--key); color: var(--accent2); font-size: 12.5px; height: 34px; }
-    .key.space { flex: 1 1 46%; color: var(--muted); font-size: 13px; }
-    .key.enter { color: var(--bg); background: var(--accent); border-color: var(--accent); flex: 0 0 22%; }
+    .key.mod { background: var(--key); color: var(--muted); font-size: 15px; flex: 0 0 13%; }
+    .key.act { background: var(--key); color: var(--accent2); font-size: 14px; height: 40px; }
+    .key.space { flex: 1 1 46%; color: var(--muted); font-size: 15px; }
+    .key.enter { color: var(--bg); background: var(--accent); border-color: var(--accent); flex: 0 0 24%; font-weight: 600; }
     .key.on { background: var(--accent); color: #000; border-color: var(--accent); }
     .key.press { background: var(--accent2); color: #000; }
     @media (min-width: 760px) {
-      #keyboard { max-width: 720px; margin: 0 auto; width: 100%; }
-      .key { height: 38px; }
+      #keyboard { max-width: 760px; margin: 0 auto; width: 100%; }
+      .key { height: 46px; font-size: 17px; }
     }
 
     /* colours */
