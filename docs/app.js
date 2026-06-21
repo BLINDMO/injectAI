@@ -158,7 +158,7 @@ function buildKeyboard() {
   // quick-action bar
   const bar = document.createElement("div");
   bar.className = "kbrow bar";
-  [["≡ menu", "run:menu"], ["help", "run:help"], ["back", "run:back"], ["▲", "up"], ["clr", "run:clear"]]
+  [["≡ menu", "run:menu"], ["back", "run:back"], ["▲ prev", "up"], ["clear", "run:clear"]]
     .forEach(([l, a]) => bar.appendChild(keyEl(l, a, "act")));
   $kb.appendChild(bar);
 
@@ -461,13 +461,26 @@ CMD.status = function () {
     this.emit("  " + ip.padEnd(15) + " " + (h ? h.hostname : "?").padEnd(28) + " [" + pinfo + "]");
   });
 };
+CMD.aih = function () {
+  if (this._cap !== null) return;
+  const hints = computeHints(this.state);
+  write("");
+  write(c("  AIH", "accent", "bold") + c("  ·  suggested next actions", "grey"));
+  hr(34);
+  hints.forEach((h) => {
+    this.emit("  " + c("• " + h.msg, "white"));
+    if (h.cmd) this.emit("    " + tap(h.cmd, h.cmd, "pill"));
+  });
+  write("");
+};
+CMD.hint = CMD.aih;
 CMD.menu = function () {
   if (this._cap !== null) return;
   const net = this.state.network;
   write("");
   write(c("  actions", "accent", "bold") + c("   (tap)", "grey"));
   hr(34);
-  write("  " + tap("help", "help", "pill") + tap("status", "status", "pill") +
+  write("  " + tap("AIH — next move", "aih", "pill") + tap("status", "status", "pill") +
     tap("loot", "loot", "pill") + tap("sessions", "sessions", "pill") + tap("back", "back", "pill"));
   if (net) {
     const obj = net.objective;
@@ -607,7 +620,18 @@ CMD.nmap = async function (args) {
     this.emit(row);
   });
   this.emit("");
-  if (!sv && this.state.config.hints) this.emit(c("hint: add -sV to fingerprint service versions.", "grey"));
+  if (this._cap === null) {
+    if (!sv) this.emit(c("hint: add -sV to fingerprint service versions.", "grey"));
+    if (this.state.config.hints) {
+      const sug = [];
+      Object.values(host.services).filter((s) => s.state === "open").forEach((s) => {
+        if (s.name === "http") sug.push(["gobuster :" + s.port, "gobuster dir -u http://" + host.ip + ":" + s.port + "/"]);
+        if (s.name === "ftp") sug.push(["ftp", "ftp " + host.ip]);
+      });
+      const pills = sug.map(([l, cmd]) => tap(l, cmd, "pill")).join("") + tap("AIH", "aih", "pill");
+      this.emit("  " + c("next ", "grey") + pills);
+    }
+  }
 };
 CMD.curl = async function (args) {
   let url = null, auth = null, data = null;
@@ -643,8 +667,34 @@ CMD.curl = async function (args) {
   let body = svc.web_paths[path];
   if (body === undefined && path.endsWith("/")) body = svc.web_paths[path.replace(/\/$/, "") + "/"];
   if (body === undefined) { this.emit("HTTP/1.1 404 Not Found  (" + hs + ":" + port + path + ")"); return; }
-  this.emit(body.replace(/\n$/, ""));
+  // linkify directory index listings so files are tappable
+  if (this._cap === null && /^Index of/.test(body)) {
+    const lines = body.replace(/\n$/, "").split("\n");
+    const dir = path.endsWith("/") ? path : path + "/";
+    this.emit(lines[0]);
+    lines.slice(1).forEach((ln) => {
+      const name = ln.trim();
+      if (name) this.emit("  " + tap(name, "curl http://" + hs + ":" + port + dir + name, "cmd"));
+      else this.emit(ln);
+    });
+  } else {
+    this.emit(body.replace(/\n$/, ""));
+  }
   this.maybeLootText(body, host.hostname + ":" + port);
+  // if disclosed creds unlock an authenticated RCE console, surface the next move
+  if (this._cap === null && this.state.config.hints) {
+    for (const [, user, secret] of this.state.loot.creds) {
+      for (const p in host.services) {
+        const s2 = host.services[p];
+        if (s2.rce_endpoint && s2.web_creds[user] === secret && !Object.keys(this.state.loot.keys).length) {
+          const cmd = 'curl -u ' + user + ':' + secret + ' -d "cmd=cat /home/' + s2.rce_user +
+            '/.ssh/id_rsa" http://' + host.ip + ':' + p + s2.rce_endpoint;
+          this.emit("  " + c("next ", "grey") + tap("RCE → read deploy key", cmd, "pill") + tap("AIH", "aih", "pill"));
+          return;
+        }
+      }
+    }
+  }
 };
 Shell.prototype.webAuthed = function (svc, auth) {
   if (!auth || !auth.includes(":")) return false;
@@ -672,8 +722,17 @@ CMD.gobuster = async function (args) {
   this.emit("Gobuster v3 -> http://" + hs + ":" + port);
   this.emit("===============================================================");
   const found = svc.listed_paths.length ? svc.listed_paths : Object.keys(svc.web_paths);
-  found.forEach((p) => this.emit(p.padEnd(28) + " (Status: " + (svc.requires_auth.includes(p) ? 403 : 200) + ")"));
+  found.forEach((p) => {
+    const status = svc.requires_auth.includes(p) ? 403 : 200;
+    if (this._cap === null) {
+      this.emit(tap(p, "curl http://" + hs + ":" + port + p, "cmd") + c("   (Status: " + status + ")", "grey"));
+    } else {
+      this.emit(p.padEnd(28) + " (Status: " + status + ")");
+    }
+  });
   this.emit("===============================================================");
+  if (this._cap === null && this.state.config.hints)
+    this.emit("  " + c("tap a path to fetch it · ", "grey") + tap("AIH", "aih", "pill"));
 };
 CMD.dirb = CMD.gobuster;
 CMD.searchsploit = function (args) {
@@ -763,6 +822,10 @@ Shell.prototype.sshSuccess = function (host, user, label) {
   this.emit(c("Last login: from " + this.state.session.host.ip, "grey"));
   this.state.push(host, user, label);
   this.state.discovered.add(host.ip);
+  if (this._cap === null && user !== "root" && this.state.config.hints) {
+    this.emit("  " + c("next ", "grey") + tap("sudo -l", "sudo -l", "pill") +
+      tap("id", "id", "pill") + tap("AIH", "aih", "pill"));
+  }
 };
 CMD.sudo = async function (args) {
   const s = this.state.session;
@@ -774,6 +837,10 @@ CMD.sudo = async function (args) {
     this.emit("");
     this.emit("User " + s.user + " may run the following commands on " + s.host.hostname + ":");
     rules.forEach((r) => this.emit("    (" + r.runas + ") " + (r.nopasswd ? "NOPASSWD: " : "") + r.command));
+    if (this._cap === null && this.state.config.hints) {
+      const esc = gtfoSample(rules[0].command);
+      if (esc) this.emit("  " + c("next ", "grey") + tap("escalate → root", esc, "pill") + tap("AIH", "aih", "pill"));
+    }
     return;
   }
   if (!args.length) { this.emit("usage: sudo -l | sudo <command>"); return; }
@@ -813,8 +880,11 @@ Shell.prototype.maybeLootFile = function (node) {
     let keyid = owner;
     const hu = s.host.users[owner];
     if (hu && hu.key) keyid = hu.key;
-    if (this.state.addKey(keyid, owner + "@" + s.host.hostname))
-      this.emit(c("\n[+] private key recovered -> loot (id '" + keyid + "'). Try: ssh -i " + keyid + " " + owner + "@" + s.host.ip, "brightgreen"));
+    if (this.state.addKey(keyid, owner + "@" + s.host.hostname)) {
+      this.emit(c("\n[+] private key recovered -> loot (id '" + keyid + "').", "brightgreen"));
+      const cmd = "ssh -i " + keyid + " " + owner + "@" + s.host.ip;
+      this.emit("  " + c("next ", "grey") + tap(cmd, cmd, "pill") + tap("AIH", "aih", "pill"));
+    }
   }
 };
 Shell.prototype.maybeLootText = function (text, source) {
@@ -840,7 +910,99 @@ function fnmatch(name, pattern) {
   return new RegExp(re).test(name);
 }
 
-window.SHELL = { Shell, GameState, loadConfig, saveConfig, buildOperatorHost };
+/* ----------------------------------------------------------------------
+ * AIH -- the in-terminal advisor. Inspects live state and proposes the
+ * next concrete action(s), each returned as a runnable command.
+ * -------------------------------------------------------------------- */
+function gtfoSample(command) {
+  const b = command.split("/").pop();
+  const map = {
+    python3: "sudo python3 -c 'import os;os.setuid(0);os.system(\"/bin/bash\")'",
+    python: "sudo python -c 'import os;os.setuid(0);os.system(\"/bin/bash\")'",
+    find: "sudo find . -exec /bin/bash \\; -quit",
+    vim: "sudo vim -c ':!/bin/sh'",
+    vi: "sudo vi -c ':!/bin/sh'",
+    nvim: "sudo nvim -c ':!/bin/sh'",
+    env: "sudo env /bin/sh",
+    awk: "sudo awk 'BEGIN{system(\"/bin/sh\")}'",
+    tar: "sudo tar -cf /dev/null /dev/null --checkpoint=1 --checkpoint-action=exec=/bin/sh",
+    perl: "sudo perl -e 'exec \"/bin/sh\"'",
+  };
+  return map[b] || "";
+}
+
+function computeHints(state) {
+  const net = state.network;
+  if (!net) return [{ msg: "No engagement loaded — open the menu and deploy a target.", cmd: "menu" }];
+  const obj = net.objective;
+  const H = net.find(obj);
+  const ports = state.scanned[obj] || new Set();
+  const onObj = state.sessions.filter((s) => s.host.ip === obj);
+  if (onObj.some((s) => s.user === "root"))
+    return [{ msg: "You have root on the target. Recover the objective artefact.", cmd: "cat /root/proof.txt" }];
+
+  const foothold = onObj.find((s) => s.user !== "root" && s.user !== state.operator);
+  if (foothold) {
+    const u = foothold.user;
+    const rules = (H.sudo || {})[u] || [];
+    const out = [{ msg: "Foothold as '" + u + "'. Enumerate what it can run as root.", cmd: "sudo -l" }];
+    if (rules.length) {
+      const esc = gtfoSample(rules[0].command);
+      if (esc) out.push({ msg: "Abuse the permitted '" + rules[0].command.split("/").pop() + "' (GTFOBins) for a root shell.", cmd: esc });
+    } else {
+      out.push({ msg: "No sudo rule — hunt for SUID binaries instead.", cmd: "find / -perm -4000 2>/dev/null" });
+    }
+    return out;
+  }
+
+  // hold a private key for a target account?
+  for (const kid in state.loot.keys) {
+    for (const uname in H.users) {
+      if (H.users[uname].key && H.users[uname].key === kid)
+        return [{ msg: "You hold " + uname + "'s private key. Log in with it.", cmd: "ssh -i " + kid + " " + uname + "@" + obj }];
+    }
+  }
+  // recovered credentials we can use?
+  for (const [, user, secret] of state.loot.creds) {
+    const hu = H.users[user];
+    if (hu && hu.password && hu.password === secret)
+      return [{ msg: "Credential reuse: SSH in as '" + user + "'.", cmd: "ssh " + user + "@" + obj }];
+    for (const p in H.services) {
+      const s2 = H.services[p];
+      if (s2.rce_endpoint && s2.web_creds[user] === secret)
+        return [{
+          msg: "Authenticated console RCE — read the deploy account's SSH key.",
+          cmd: 'curl -u ' + user + ':' + secret + ' -d "cmd=cat /home/' + s2.rce_user + '/.ssh/id_rsa" http://' + obj + ':' + p + s2.rce_endpoint,
+        }];
+    }
+  }
+
+  if (!ports.size) return [{ msg: "Start with service discovery and version detection.", cmd: "nmap -sV " + obj }];
+
+  const open = Object.values(H.services).filter((s) => s.state === "open");
+  const ftp = open.find((s) => s.name === "ftp");
+  const http = open.find((s) => s.name === "http");
+  const weak = Object.values(H.users).find((u) => u.weak && u.password);
+  const hasSsh = open.some((s) => s.name === "ssh");
+
+  if (ftp) {
+    const out = [{ msg: "The FTP service is talkative — inspect it for leaked credentials.", cmd: "ftp " + obj }];
+    const f = (ftp.listed_paths || [])[0];
+    if (f) out.push({ msg: "Fetch a file directly and read it.", cmd: "curl ftp://" + obj + f });
+    return out;
+  }
+  if (http) {
+    const out = [{ msg: "Enumerate the web root for exposed content.", cmd: "gobuster dir -u http://" + obj + ":" + http.port + "/" }];
+    const juicy = (http.listed_paths || []).find((p) => /backup|config|\.git|\.bak/i.test(p));
+    if (juicy) out.push({ msg: "Operators leave secrets in exposed backups — pull it.", cmd: "curl http://" + obj + ":" + http.port + juicy });
+    return out;
+  }
+  if (weak && hasSsh)
+    return [{ msg: "Try an online dictionary attack on the '" + weak.name + "' account.", cmd: "hydra -l " + weak.name + " -P wordlists/common.txt ssh://" + obj }];
+  return [{ msg: "Re-examine recon; enumerate each open service in turn.", cmd: "nmap -sV " + obj }];
+}
+
+window.SHELL = { Shell, GameState, loadConfig, saveConfig, buildOperatorHost, computeHints };
 
 /* Shared IO surface consumed by console.js */
 window.C = { write, c, tap, hr, box, clear: clearScreen, readLine, sleep, escapeHtml, progress, runCommand };
