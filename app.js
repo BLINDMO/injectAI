@@ -413,6 +413,7 @@ class Shell {
       this.emit(c("  [+] You are root on " + h.hostname + ". The kill-switch will now obey you —", "brightgreen", "bold"));
       this.emit(c("      but it won't fire on its own. Engage it to halt bot-13:", "green"));
       this.emit("  " + tap("orion-ctl kill 13", "orion-ctl kill 13", "pill") +
+        tap("orion-ctl balance", "orion-ctl balance", "pill") +
         tap("watch live: tail -f " + log, "tail -f " + log, "pill"));
       write("");
     }
@@ -572,7 +573,7 @@ CMD.commands = function () {
     ["privilege escalation", ["sudo -l",
       "sudo python3 -c 'import os;os.setuid(0);os.system(\"/bin/bash\")'",
       "sudo find . -exec /bin/bash \\; -quit"]],
-    ["bot control (needs root)", ["orion-ctl status", "orion-ctl kill 13"]],
+    ["bot control (needs root)", ["orion-ctl status", "orion-ctl balance", "orion-ctl kill 13"]],
     ["session", ["loot", "status", "sessions", "aih", "clear", "back"]],
   ];
   groups.forEach(([cat, cmds]) => {
@@ -708,6 +709,19 @@ CMD["orion-ctl"] = async function (args) {
     const done = net && this.state.config.completed.includes(net.code);
     this.emit("  13   fablefork-momentum    " + (done ? "HALTED" : c("ROGUE / AUTONOMOUS", "brightred")));
     if (!done) this.emit(c("  engage the kill-switch with: orion-ctl kill 13   (requires root)", "grey"));
+    this.emit(c("  view funds with: orion-ctl balance   (requires root)", "grey"));
+    return;
+  }
+  if (["balance", "bal", "funds", "account"].includes(sub)) {
+    if (s.user !== "root") {
+      this.emit(c("orion-ctl: account access DENIED — caller is '" + s.user + "', root (uid 0) required.", "red"));
+      return;
+    }
+    const bal = (net && net.find(net.objective).balance) || "$0.00";
+    this.emit("orion-ctl 5.3 — trading account");
+    this.emit("  account     : fablefork-13 (managed)");
+    this.emit("  status      : " + ((net && this.state.config.completed.includes(net.code)) ? "secured (bot halted)" : c("AT RISK (bot rogue)", "brightred")));
+    this.emit("  " + c("available balance: " + bal, "brightgreen", "bold"));
     return;
   }
   if (["kill", "stop", "halt", "kill-switch", "killswitch"].includes(sub)) {
@@ -737,7 +751,7 @@ CMD["orion-ctl"] = async function (args) {
     }
     return;
   }
-  this.emit("usage: orion-ctl status | orion-ctl kill 13");
+  this.emit("usage: orion-ctl status | orion-ctl balance | orion-ctl kill 13");
 };
 
 /* -- network tooling -- */

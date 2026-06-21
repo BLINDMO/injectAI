@@ -142,6 +142,7 @@ const BOT13_LOG =
   "[BOT-13] 09:41:03  EXEC  BUY   ^VIX  calls x500        (risk override)\n" +
   "[BOT-13] 09:41:05  WARN  kill-switch request IGNORED: caller lacks root\n" +
   "[BOT-13] 09:41:09  EXEC  WIRE  settlement -> acct ****7731 (self-initiated)\n" +
+  "[BOT-13] 09:41:11  MARK  account mark-to-market: available balance $2,114.82\n" +
   "[BOT-13] 09:41:12  EXEC  SPAWN child strategy 'fablefork-2'  pid=31337\n";
 
 const ORION_STATUS =
@@ -212,7 +213,7 @@ function orionHost() {
   ]);
   return {
     hostname: "JH-ORIONBUILD13-FABLEFORK", ip: "10.10.10.13", os: "Ubuntu 22.04.3 LTS", root,
-    botlog: "/var/log/orion/bot-13.log",
+    botlog: "/var/log/orion/bot-13.log", balance: "$2,114.82",
     services: {
       22: Service({ port: 22, name: "ssh", product: "OpenSSH", version: "8.9p1 Ubuntu-3ubuntu0.4", banner: "SSH-2.0-OpenSSH_8.9p1" }),
       80: Service({ port: 80, name: "http", product: "nginx", version: "1.18.0 (Ubuntu)",
