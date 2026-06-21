@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>injectAI — operations console</title>
+  <meta name="description" content="injectAI: a terminal-style offensive security operations simulator. Fully simulated; no real systems are contacted." />
+  <style>
+    :root {
+      --bg: #0a0e0a;
+      --panel: #0d130d;
+      --fg: #c8d6c8;
+      --green: #35d07f; --brightgreen: #5dff9e;
+      --red: #ff5f56; --brightred: #ff8a80;
+      --yellow: #e0c046; --brightyellow: #ffe066;
+      --blue: #6aa9ff; --brightblue: #8fc1ff;
+      --cyan: #36c5d0; --brightcyan: #66e6f0;
+      --magenta: #c678dd;
+      --grey: #6b7a6b; --white: #e6efe6;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: radial-gradient(1200px 700px at 50% -10%, #0f1a10 0%, var(--bg) 60%);
+      color: var(--fg);
+      font-family: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 14px; line-height: 1.45;
+      display: flex; flex-direction: column;
+    }
+    #frame {
+      flex: 1; display: flex; flex-direction: column;
+      max-width: 980px; width: 100%; margin: 0 auto; padding: 10px;
+      min-height: 0;
+    }
+    #titlebar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 12px; border-radius: 8px 8px 0 0;
+      background: #0b110b; border: 1px solid #1c2a1c; border-bottom: none;
+      color: var(--grey); font-size: 12px;
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+    .dot.r { background: #ff5f56; } .dot.y { background: #ffbd2e; } .dot.g { background: #27c93f; }
+    #titlebar .who { margin-left: 8px; }
+    #titlebar .right { margin-left: auto; opacity: .8; }
+    #screen {
+      flex: 1; overflow-y: auto; min-height: 0;
+      background: var(--panel);
+      border: 1px solid #1c2a1c; border-top: none;
+      padding: 12px 14px;
+      box-shadow: inset 0 0 80px rgba(0,0,0,.5);
+    }
+    #out .line { white-space: pre-wrap; word-break: break-word; }
+    #inputline {
+      display: flex; align-items: baseline; gap: 6px;
+      background: var(--panel);
+      border: 1px solid #1c2a1c; border-top: none;
+      border-radius: 0 0 8px 8px;
+      padding: 8px 14px 12px;
+    }
+    #prompt { white-space: pre; }
+    #cmd {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--brightgreen); font: inherit; caret-color: var(--brightgreen);
+    }
+    /* colour classes */
+    .green { color: var(--green); } .brightgreen { color: var(--brightgreen); }
+    .red { color: var(--red); } .brightred { color: var(--brightred); }
+    .yellow { color: var(--yellow); } .brightyellow { color: var(--brightyellow); }
+    .blue { color: var(--blue); } .brightblue { color: var(--brightblue); }
+    .cyan { color: var(--cyan); } .brightcyan { color: var(--brightcyan); }
+    .magenta { color: var(--magenta); }
+    .grey { color: var(--grey); } .white { color: var(--white); }
+    .bold { font-weight: 700; }
+    .dim { opacity: .7; }
+    body.nocolour .green, body.nocolour .brightgreen, body.nocolour .red,
+    body.nocolour .brightred, body.nocolour .yellow, body.nocolour .brightyellow,
+    body.nocolour .blue, body.nocolour .brightblue, body.nocolour .cyan,
+    body.nocolour .brightcyan, body.nocolour .magenta, body.nocolour .grey,
+    body.nocolour .white { color: var(--fg) !important; }
+    #screen::-webkit-scrollbar { width: 10px; }
+    #screen::-webkit-scrollbar-thumb { background: #1c2a1c; border-radius: 5px; }
+    .hintbar { text-align: center; color: var(--grey); font-size: 11px; padding: 6px 0 2px; }
+    @media (max-width: 640px) { body { font-size: 12.5px; } #frame { padding: 4px; } }
+  </style>
+</head>
+<body>
+  <div id="frame">
+    <div id="titlebar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="who">operator@injectai — secure shell</span>
+      <span class="right">simulation · offline</span>
+    </div>
+    <div id="screen">
+      <div id="out"></div>
+    </div>
+    <div id="inputline">
+      <span id="prompt"></span>
+      <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off"
+             spellcheck="false" aria-label="command input" />
+    </div>
+    <div class="hintbar">Type <b>help</b> · <b>scenarios</b> · <b>training</b> — fully simulated, nothing leaves your browser.</div>
+  </div>
+
+  <script src="world.js"></script>
+  <script src="app.js"></script>
+  <script src="console.js"></script>
+</body>
+</html>

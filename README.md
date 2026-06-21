@@ -11,7 +11,18 @@ host, service and exploit lives entirely in memory.
 
 ---
 
-## Running it
+## Two ways to run it
+
+There are two builds of the same simulator:
+
+- **CLI (Python)** — the reference implementation, below.
+- **Web (browser)** — a faithful static port under [`docs/`](docs/) that runs
+  entirely client-side, intended for **GitHub Pages**. Open `docs/index.html`
+  locally, or deploy via Pages → *Settings → Pages → Deploy from a branch →
+  this branch → `/docs`*. Nothing leaves the browser; progress is saved to
+  `localStorage`.
+
+## Running it (CLI)
 
 Requires Python 3.10+. No dependencies.
 
