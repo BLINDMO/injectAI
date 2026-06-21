@@ -821,36 +821,40 @@ CMD.hydra = async function (args) {
   const u = host.users[user];
   const open = Object.values(host.services).filter((s) => s.state !== "closed");
   const port = service === "ssh" ? 22 : (open.find((s) => s.name === service) || { port: 22 }).port;
-  const list = W.BRUTE_WORDLIST;
+  const TOTAL = 1100;                 // tries before the crack lands
+  const willCrack = !!(u && u.weak);
   this.emit(c("Hydra v9.5 (online password attack)", "grey"));
-  this.emit("[DATA] max 8 tasks per server, " + list.length + " login tries (l:1/p:" + list.length + ")");
+  this.emit("[DATA] max 16 tasks per server, " + TOTAL + " login tries (l:1/p:" + TOTAL + ")");
   this.emit("[DATA] attacking " + service + "://" + host.ip + ":" + port + "/");
-  let found = null;
-  for (let i = 0; i < list.length; i++) {
-    const pw = list[i];
-    const ok = !!(u && u.weak && u.password === pw);
-    if (this._cap === null) await sleep(95);
-    const line = '[ATTEMPT] target ' + host.ip + ' - login "' + user + '" - pass "' + pw +
-      '" - ' + (i + 1) + " of " + list.length + " [child " + (i % 8) + "]";
-    if (ok) {
-      this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user +
-        "   password: " + pw, "brightgreen", "bold"));
-      found = pw; break;
-    } else {
-      this.emit(c(line, "grey"));
+  if (this._cap === null) {
+    // stream every attempt, paced so the full run lands in ~2 minutes.
+    // tap anywhere to fast-forward to the result.
+    const delay = Math.max(15, Math.round(120000 / TOTAL));   // ~109ms / try
+    let skip = false;
+    const onSkip = () => { skip = true; };
+    document.addEventListener("pointerdown", onSkip, { once: true });
+    for (let i = 1; i <= TOTAL; i++) {
+      await sleep(delay);
+      this.emit(c('[ATTEMPT] target ' + host.ip + ' - login "' + user + '" - pass "' + randPw() +
+        '" - ' + i + " of " + TOTAL + " [child " + (i % 16) + "]", "grey"));
+      if (skip) { this.emit(c("... fast-forwarding through remaining tries ...", "grey")); break; }
     }
+    document.removeEventListener("pointerdown", onSkip);
   }
   this.emit("");
-  if (found) {
+  if (willCrack) {
+    this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user +
+      "   password: " + u.password, "brightgreen", "bold"));
+    this.emit(c("[STATUS] password recovered after " + TOTAL + " attempts", "grey"));
     this.emit(c("1 of 1 target successfully completed, 1 valid password found", "brightgreen"));
-    if (this.state.addCred(host.hostname + " " + service, user, found)) {
+    if (this.state.addCred(host.hostname + " " + service, user, u.password)) {
       this.emit(c("  -> credential stored in loot.", "grey"));
       if (this._cap === null)
         this.emit("  " + c("next ", "grey") + tap("ssh " + user + "@" + host.ip, "ssh " + user + "@" + host.ip, "pill"));
     }
   } else {
-    this.emit(c("0 of 1 target completed, 0 valid passwords found", "red"));
-    this.emit(c("[STATUS] '" + user + "' password not in this wordlist — try another user or a larger list.", "grey"));
+    this.emit(c(TOTAL + " of " + TOTAL + " tries, 0 valid passwords found", "red"));
+    this.emit(c("[STATUS] '" + user + "' not cracked — try another account or a larger list.", "grey"));
   }
 };
 CMD.ftp = function (args) {
@@ -1002,6 +1006,19 @@ Shell.prototype.maybeObjective = function (node) {
 function fnmatch(name, pattern) {
   const re = "^" + pattern.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$";
   return new RegExp(re).test(name);
+}
+
+/* A plausible-looking random password, for brute-force visuals. */
+function randPw() {
+  const base = ["password", "dragon", "summer", "winter", "trader", "orion", "letmein",
+    "baseball", "shadow", "master", "ninja", "qwerty", "login", "admin", "welcome",
+    "hunter", "sunshine", "monkey", "football", "iloveyou", "superman", "access"];
+  const w = base[Math.floor(Math.random() * base.length)];
+  const r = Math.random();
+  if (r < 0.4) return w + Math.floor(Math.random() * 99);
+  if (r < 0.7) return w + (2018 + Math.floor(Math.random() * 8));
+  if (r < 0.85) return w.charAt(0).toUpperCase() + w.slice(1) + "!";
+  return w;
 }
 
 /* Live rogue-bot activity for `tail -f` on the Orion node. */
