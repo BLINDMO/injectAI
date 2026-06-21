@@ -4,9 +4,9 @@
 
 const W = window.WORLD;
 const $out = document.getElementById("out");
-const $input = document.getElementById("cmd");
-const $prompt = document.getElementById("prompt");
 const $screen = document.getElementById("screen");
+const $live = document.getElementById("liveline");
+const $kb = document.getElementById("keyboard");
 
 /* ----------------------------------------------------------------------
  * Output + colour
@@ -16,6 +16,11 @@ function escapeHtml(s) {
 }
 function c(text, ...cls) {
   return '<span class="' + cls.join(" ") + '">' + escapeHtml(text) + "</span>";
+}
+/* A tappable element that runs a command when clicked. */
+function tap(label, cmd, ...cls) {
+  return '<span class="tap ' + cls.join(" ") + '" role="button" data-cmd="' +
+    escapeHtml(cmd) + '">' + escapeHtml(label) + "</span>";
 }
 function writeLine(html) {
   const div = document.createElement("div");
@@ -27,23 +32,11 @@ function write(html) {
   String(html).split("\n").forEach(writeLine);
   $screen.scrollTop = $screen.scrollHeight;
 }
-function hr(n = 60) { write(c("─".repeat(n), "grey")); }
-function box(title, lines, width = 66, col = "cyan") {
-  write(c("┌" + "─".repeat(width - 2) + "┐", col));
-  if (title) {
-    write(c("│ ", col) + c(title.padEnd(width - 4), "bold") + c(" │", col));
-    write(c("├" + "─".repeat(width - 2) + "┤", col));
-  }
-  lines.forEach((ln) => {
-    const pad = Math.max(0, width - 4 - visibleLen(ln));
-    write(c("│ ", col) + ln + " ".repeat(pad) + c(" │", col));
-  });
-  write(c("└" + "─".repeat(width - 2) + "┘", col));
-}
-function visibleLen(html) {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  return (tmp.textContent || "").length;
+function hr(n = 40) { write(c("─".repeat(n), "grey")); }
+function box(title, lines) {
+  // modern, lightweight section header (no heavy ASCII frame)
+  if (title) write(c("  " + title, "accent", "bold"));
+  lines.forEach((ln) => { if (ln !== "") write("  " + ln); else write(""); });
 }
 function clearScreen() { $out.innerHTML = ""; }
 
@@ -53,63 +46,178 @@ async function progress(label, ms = 600) {
   $out.appendChild(div);
   const steps = 22;
   for (let i = 0; i <= steps; i++) {
-    const filled = Math.round((i / steps) * 24);
-    const bar = "█".repeat(filled) + "·".repeat(24 - filled);
-    const pct = Math.round((i / steps) * 100);
-    div.innerHTML = escapeHtml(label) + " [" + c(bar, "green") + "] " +
-      String(pct).padStart(3) + "%";
+    const filled = Math.round((i / steps) * 22);
+    const bar = "▰".repeat(filled) + "▱".repeat(22 - filled);
+    div.innerHTML = escapeHtml(label) + "  " + c(bar, "green");
     $screen.scrollTop = $screen.scrollHeight;
     await sleep(ms / steps);
   }
+  div.innerHTML = escapeHtml(label) + "  " + c("done", "grey");
+  $screen.scrollTop = $screen.scrollHeight;
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ----------------------------------------------------------------------
- * Line input (promise based)
+ * Input -- driven by the on-screen keyboard (and a physical one on desktop).
+ * No focusable <input> exists, so the mobile OS keyboard never appears.
  * -------------------------------------------------------------------- */
+let buffer = "";
+let liveInline = "";
+let masked = false;
+let awaiting = false;
+let shift = false;
+let layer = "abc";
 let pendingResolve = null;
 const history = [];
 let histIdx = 0;
 
+function renderLive() {
+  if (!awaiting) { $live.innerHTML = ""; return; }
+  const shown = masked ? "•".repeat(buffer.length) : escapeHtml(buffer);
+  $live.innerHTML = liveInline + '<span class="buf">' + shown + "</span><span class=\"cur\"></span>";
+  $screen.scrollTop = $screen.scrollHeight;
+}
+
 function readLine(promptObj) {
-  // promptObj: string | {pre:[html...], inline:html, mask:bool}
-  let pre = [], inline = "", mask = false;
+  let pre = [], inline = "", m = false;
   if (typeof promptObj === "string") inline = promptObj;
-  else { pre = promptObj.pre || []; inline = promptObj.inline || ""; mask = !!promptObj.mask; }
+  else { pre = promptObj.pre || []; inline = promptObj.inline || ""; m = !!promptObj.mask; }
   pre.forEach(write);
-  $prompt.innerHTML = inline;
-  $input.type = mask ? "password" : "text";
-  $input.value = "";
-  $input.focus();
+  liveInline = inline; masked = m; buffer = ""; awaiting = true;
+  renderLive();
   return new Promise((resolve) => {
     pendingResolve = (val) => {
-      writeLine(inline + (mask ? "" : escapeHtml(val)));
+      awaiting = false;
+      writeLine(inline + (masked ? "" : escapeHtml(val)));
+      $live.innerHTML = "";
       $screen.scrollTop = $screen.scrollHeight;
       resolve(val);
     };
   });
 }
 
-$input.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const val = $input.value;
-    if (val.trim() && !$input.type.includes("password")) {
-      history.push(val); histIdx = history.length;
-    }
-    const r = pendingResolve; pendingResolve = null;
-    $input.value = "";
-    if (r) r(val);
-  } else if (e.key === "ArrowUp") {
-    if (histIdx > 0) { histIdx--; $input.value = history[histIdx] || ""; }
-    e.preventDefault();
-  } else if (e.key === "ArrowDown") {
-    if (histIdx < history.length) { histIdx++; $input.value = history[histIdx] || ""; }
-    e.preventDefault();
-  } else if (e.key === "l" && e.ctrlKey) {
-    clearScreen(); e.preventDefault();
+function submit(val) {
+  if (!pendingResolve) return;
+  if (val.trim() && !masked) { history.push(val); histIdx = history.length; }
+  const r = pendingResolve; pendingResolve = null;
+  r(val);
+}
+
+/* run a command as if it had been typed at the current prompt */
+function runCommand(cmd) {
+  if (!awaiting) return;
+  buffer = cmd; renderLive();
+  submit(cmd);
+}
+
+function handleKey(action) {
+  if (action === "enter") { submit(buffer); return; }
+  if (action === "back") { buffer = buffer.slice(0, -1); renderLive(); return; }
+  if (action === "space") { buffer += " "; renderLive(); return; }
+  if (action === "shift") { shift = !shift; buildKeyboard(); return; }
+  if (action === "up") { if (histIdx > 0) { histIdx--; buffer = history[histIdx] || ""; renderLive(); } return; }
+  if (action === "down") { if (histIdx < history.length) { histIdx++; buffer = history[histIdx] || ""; renderLive(); } return; }
+  if (action.startsWith("layer:")) { layer = action.slice(6); shift = false; buildKeyboard(); return; }
+  if (action.startsWith("run:")) { runCommand(action.slice(4)); return; }
+  if (action.startsWith("ch:")) {
+    let ch = action.slice(3);
+    if (shift && /[a-z]/.test(ch)) { ch = ch.toUpperCase(); shift = false; buildKeyboard(); }
+    buffer += ch; renderLive();
   }
+}
+
+/* ---- on-screen keyboard ---------------------------------------------- */
+const LAYOUTS = {
+  abc: [
+    ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+    ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+    [["⇧", "shift", "mod"], "z", "x", "c", "v", "b", "n", "m", ["⌫", "back", "mod"]],
+  ],
+  "123": [
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+    ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""],
+    [["#+=", "layer:sym", "mod"], ".", ",", "?", "!", "'", "_", "=", ["⌫", "back", "mod"]],
+  ],
+  sym: [
+    ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="],
+    ["_", "\\", "|", "~", "<", ">", "/", ":", ";"],
+    [["123", "layer:123", "mod"], ".", ",", "?", "!", "'", "\"", ["⌫", "back", "mod"]],
+  ],
+};
+
+function keyEl(label, action, cls) {
+  const b = document.createElement("button");
+  b.className = "key" + (cls ? " " + cls : "");
+  b.textContent = label;
+  b.dataset.action = action;
+  return b;
+}
+
+function buildKeyboard() {
+  $kb.innerHTML = "";
+  // quick-action bar
+  const bar = document.createElement("div");
+  bar.className = "kbrow bar";
+  [["≡ menu", "run:menu"], ["help", "run:help"], ["back", "run:back"], ["▲", "up"], ["clr", "run:clear"]]
+    .forEach(([l, a]) => bar.appendChild(keyEl(l, a, "act")));
+  $kb.appendChild(bar);
+
+  LAYOUTS[layer].forEach((row) => {
+    const r = document.createElement("div");
+    r.className = "kbrow";
+    row.forEach((k) => {
+      if (Array.isArray(k)) {
+        const el = keyEl(k[0], k[1], k[2]);
+        if (k[1] === "shift" && shift) el.classList.add("on");
+        r.appendChild(el);
+      } else {
+        const lbl = (layer === "abc" && shift) ? k.toUpperCase() : k;
+        r.appendChild(keyEl(lbl, "ch:" + k));
+      }
+    });
+    $kb.appendChild(r);
+  });
+
+  // bottom row: layer switch + space + enter
+  const bottom = document.createElement("div");
+  bottom.className = "kbrow";
+  bottom.appendChild(keyEl(layer === "abc" ? "123" : "ABC",
+    layer === "abc" ? "layer:123" : "layer:abc", "mod"));
+  bottom.appendChild(keyEl("space", "space", "space"));
+  bottom.appendChild(keyEl("return", "enter", "mod enter"));
+  $kb.appendChild(bottom);
+}
+
+// key presses (pointerdown for snappy, no-zoom response)
+$kb.addEventListener("pointerdown", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  e.preventDefault();
+  b.classList.add("press");
+  setTimeout(() => b.classList.remove("press"), 90);
+  handleKey(b.dataset.action);
 });
-document.addEventListener("click", () => $input.focus());
+
+// tappable command links inside the transcript
+$out.addEventListener("click", (e) => {
+  const t = e.target.closest(".tap");
+  if (t && t.dataset.cmd) runCommand(t.dataset.cmd);
+});
+
+// physical keyboard support (desktop)
+window.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey) {
+    if (e.key === "l") { clearScreen(); e.preventDefault(); }
+    return;
+  }
+  if (e.key === "Enter") { submit(buffer); e.preventDefault(); }
+  else if (e.key === "Backspace") { buffer = buffer.slice(0, -1); renderLive(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { handleKey("up"); e.preventDefault(); }
+  else if (e.key === "ArrowDown") { handleKey("down"); e.preventDefault(); }
+  else if (e.key.length === 1) { buffer += e.key; renderLive(); e.preventDefault(); }
+});
+
+buildKeyboard();
 
 /* simple shell-style tokeniser (handles quotes) */
 function tokenize(line) {
@@ -295,7 +403,12 @@ CMD.help = function () {
   write("");
   rows.forEach(([k, v]) => this.emit("  " + c(k.padEnd(9), "cyan", "bold") + c(v, "white")));
   this.emit("");
-  this.emit(c("  man <tool> shows usage. `back` returns to the console.", "grey"));
+  if (this._cap === null) {
+    this.emit("  tap " + tap("menu", "menu", "cmd") + c(" for quick actions  ·  man <tool> for usage  ·  ", "grey") +
+      tap("back", "back") + c(" returns to console", "grey"));
+  } else {
+    this.emit(c("  man <tool> shows usage. `back` returns to the console.", "grey"));
+  }
   this.emit("");
 };
 CMD["?"] = CMD.help;
@@ -347,6 +460,24 @@ CMD.status = function () {
     const pinfo = ports.length ? ports.join(",") : "unscanned";
     this.emit("  " + ip.padEnd(15) + " " + (h ? h.hostname : "?").padEnd(28) + " [" + pinfo + "]");
   });
+};
+CMD.menu = function () {
+  if (this._cap !== null) return;
+  const net = this.state.network;
+  write("");
+  write(c("  actions", "accent", "bold") + c("   (tap)", "grey"));
+  hr(34);
+  write("  " + tap("help", "help", "pill") + tap("status", "status", "pill") +
+    tap("loot", "loot", "pill") + tap("sessions", "sessions", "pill") + tap("back", "back", "pill"));
+  if (net) {
+    const obj = net.objective;
+    write("  recon  " + tap("nmap -sV " + obj, "nmap -sV " + obj, "pill") +
+      tap("gobuster :80", "gobuster dir -u http://" + obj + "/", "pill"));
+    Array.from(this.state.discovered).sort().forEach((ip) => {
+      write("  host   " + tap("nmap -sV " + ip, "nmap -sV " + ip, "pill") + c(ip, "grey"));
+    });
+  }
+  write("");
 };
 
 /* -- local shell builtins -- */
@@ -712,4 +843,7 @@ function fnmatch(name, pattern) {
 window.SHELL = { Shell, GameState, loadConfig, saveConfig, buildOperatorHost };
 
 /* Shared IO surface consumed by console.js */
-window.C = { write, c, hr, box, clear: clearScreen, readLine, sleep, escapeHtml, progress };
+window.C = { write, c, tap, hr, box, clear: clearScreen, readLine, sleep, escapeHtml, progress, runCommand };
+
+/* test hook for the headless harness */
+window.__test = { submit, awaiting: () => awaiting };
