@@ -1,147 +1,28 @@
-# injectAI
+# injectAI — web deployment branch
 
-**injectAI** is a terminal-style *offensive security operations console* — a
-fully self-contained simulator of a penetration-testing workflow. It looks and
-behaves like a real attacker shell (Kali-style prompt, `nmap`, `curl`,
-`gobuster`, `hydra`, `ssh`, `sudo`/GTFOBins privilege escalation), but every
-host, service and exploit lives entirely in memory.
+This branch (`gh-pages`) holds the **static browser build** of injectAI, ready
+to be served by GitHub Pages. The site files (`index.html`, `app.js`,
+`world.js`, `console.js`) live at the repo root so Pages can serve them with
+**Deploy from a branch → `gh-pages` → `/(root)`**.
 
-> Nothing here touches a real network. No packets leave your machine. It exists
-> for learning, practice and curiosity.
+Once enabled, the console is live at:
+**https://blindmo.github.io/injectAI/**
 
----
+It runs entirely client-side — nothing leaves the browser; progress and
+settings persist to `localStorage`.
 
-## Two ways to run it
+> injectAI is a terminal-style *offensive security operations simulator*. Every
+> host, service and exploit is fully simulated. It exists for learning and
+> practice. Use what you learn responsibly and only against systems you are
+> explicitly authorised to test.
 
-There are two builds of the same simulator:
+## Quick start
 
-- **CLI (Python)** — the reference implementation, below.
-- **Web (browser)** — a faithful static port under [`docs/`](docs/) that runs
-  entirely client-side, intended for **GitHub Pages**. Open `docs/index.html`
-  locally, or deploy via Pages → *Settings → Pages → Deploy from a branch →
-  this branch → `/docs`*. Nothing leaves the browser; progress is saved to
-  `localStorage`.
+Type `help`, `scenarios`, or `training` at the prompt. The flagship engagement
+is `JH-ORIONBUILD13-FABLEFORK` (`engage ORIONBUILD`).
 
-## Running it (CLI)
+## Source
 
-Requires Python 3.10+. No dependencies.
-
-```bash
-python3 play.py
-# or
-python3 -m injectai
-```
-
-Jump straight into something:
-
-```bash
-python3 play.py engage ORIONBUILD     # deploy into an engagement
-python3 play.py training easy         # start a guided module
-```
-
-If your terminal mangles colours: `python3 play.py --no-color`.
-
----
-
-## The console
-
-When it boots you land at the operator prompt (`operator@injectai >`). From here:
-
-| command            | what it does                                         |
-| ------------------ | ---------------------------------------------------- |
-| `help`             | list console commands                                |
-| `scenarios`        | list available engagements / targets                 |
-| `brief <code>`     | read the briefing for an engagement                  |
-| `engage <code>`    | deploy into the engagement's live operator shell     |
-| `training [tier]`  | guided modules — `easy`, `medium`, or `hard`         |
-| `status`           | your progress and recovered objectives               |
-| `settings`         | display & interaction preferences (saved to disk)    |
-| `exit`             | close the console                                    |
-
-Inside an engagement you get the operational shell. `help` lists the tooling,
-`status` tracks what you've discovered, and `back` returns to the console.
-
----
-
-## Training modules
-
-The same deliberately-vulnerable lab host is used at every difficulty tier — the
-only thing that changes is how much help you get:
-
-- **Easy** — the exact command for each objective is shown.
-- **Medium** — a conceptual hint (the technique, not the keystrokes).
-- **Hard** — objectives only; you're on your own.
-
-A complete module walks you through a real kill chain end to end: service
-discovery → credential attack → foothold → privilege escalation → root.
-
----
-
-## Engagements
-
-Pick one with `engage <code>`:
-
-- **TRN-SANDBOX** *(Recruit / Easy)* — a single warm-up host.
-- **ORIONBUILD** *(Operator / Medium–Hard)* — `JH-ORIONBUILD13-FABLEFORK`, an
-  internet-facing CI/build controller for the *FableFork* release pipeline.
-  Locked down on the surface; the way in is a chain, not a single trick.
-- **PHAROS** *(Operator / Medium)* — a mail relay with a chatty FTP service and
-  a sloppy sudo rule.
-
-Each engagement has a single objective: get root on the in-scope host and
-recover the proof artefact at `/root/proof.txt`.
-
----
-
-## Tooling (simulated)
-
-| area    | commands                                             |
-| ------- | ---------------------------------------------------- |
-| Recon   | `nmap`, `ping`, `ifconfig`/`ip`, `netstat`           |
-| Web     | `curl`, `wget`, `gobuster`/`dirb`                     |
-| Intel   | `searchsploit`, `man <tool>`                         |
-| Access  | `hydra`, `ftp`, `ssh`                                |
-| Local   | `ls cd cat pwd whoami id find grep echo sudo`        |
-| Session | `loot`, `status`, `sessions`, `clear`, `back`        |
-
-`man <tool>` gives usage for the network tools. Credentials and private keys you
-recover are stored automatically — check them with `loot`.
-
-The privilege-escalation engine models real
-[GTFOBins](https://gtfobins.github.io/) sudo techniques (interpreter abuse,
-`find -exec`, editor escapes, …), so what you learn here transfers directly.
-
----
-
-## Settings & saved state
-
-Preferences and progress are persisted to `~/.injectai/state.json`. Change
-settings from the console, e.g.:
-
-```
-settings typing on        # per-character typing effect
-settings operator ghost   # rename your prompt handle
-settings hints off        # hide inline tactical hints (more challenge)
-```
-
----
-
-## Project layout
-
-```
-injectai/
-  app.py        boot sequence + entry point
-  console.py    meta console: menu, scenarios, settings, status
-  shell.py      operational shell: every simulated tool
-  training.py   guided tutorial driver (easy/medium/hard)
-  world.py      scenario definitions (the engagements)
-  model.py      filesystem / host / service data model
-  game.py       runtime state, sessions, loot, config persistence
-  ui.py         colour, typed output, banners
-play.py         launcher
-```
-
----
-
-*For education and entertainment only. Use what you learn responsibly and only
-against systems you are explicitly authorised to test.*
+The full project — including the reference **Python CLI** build and developer
+docs — lives on the feature branch
+[`claude/terminal-hacking-simulator-c38rs9`](../../tree/claude/terminal-hacking-simulator-c38rs9).
