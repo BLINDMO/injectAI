@@ -366,9 +366,12 @@ class Shell {
     if (!net || net.goalKind !== "sudo") return;
     const rooted = this.state.sessions.some((s) => s.host.ip === net.objective && s.user === "root");
     if (rooted && this.state.markRooted(net.code)) {
+      const h = net.find(net.objective);
+      const log = h.botlog || "/var/log/orion/bot-13.log";
       write("");
-      this.emit(c("  [+] SUDO / ROOT on " + net.find(net.objective).hostname + " — kill-switch authority restored.", "brightgreen", "bold"));
-      this.emit(c("      rogue trading bot-13 HALTED. objective complete.", "green"));
+      this.emit(c("  [+] SUDO / ROOT on " + h.hostname + " — kill-switch authority restored.", "brightgreen", "bold"));
+      this.emit(c("      you can now stop the rogue bot. watch it live:", "green"));
+      this.emit("  " + tap("tail -f " + log, "tail -f " + log, "pill"));
       write("");
     }
   }
@@ -827,19 +830,13 @@ CMD.hydra = async function (args) {
   this.emit("[DATA] max 16 tasks per server, " + TOTAL + " login tries (l:1/p:" + TOTAL + ")");
   this.emit("[DATA] attacking " + service + "://" + host.ip + ":" + port + "/");
   if (this._cap === null) {
-    // stream every attempt, paced so the full run lands in ~2 minutes.
-    // tap anywhere to fast-forward to the result.
+    // stream every attempt; the full run lands in ~2 minutes (no skipping)
     const delay = Math.max(15, Math.round(120000 / TOTAL));   // ~109ms / try
-    let skip = false;
-    const onSkip = () => { skip = true; };
-    document.addEventListener("pointerdown", onSkip, { once: true });
     for (let i = 1; i <= TOTAL; i++) {
       await sleep(delay);
       this.emit(c('[ATTEMPT] target ' + host.ip + ' - login "' + user + '" - pass "' + randPw() +
         '" - ' + i + " of " + TOTAL + " [child " + (i % 16) + "]", "grey"));
-      if (skip) { this.emit(c("... fast-forwarding through remaining tries ...", "grey")); break; }
     }
-    document.removeEventListener("pointerdown", onSkip);
   }
   this.emit("");
   if (willCrack) {
