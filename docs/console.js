@@ -8,40 +8,67 @@
   let state, scenarios;
 
   /* ---- training -------------------------------------------------- */
-  const TARGET = "10.13.37.20";
   const hasCred = (st, user) => st.loot.creds.some((x) => x[1] === user);
   const hasSession = (st, ip, user) => st.sessions.some((s) => s.host.ip === ip && s.user === user);
+  const rooted = (st, ip) => st.sessions.some((s) => s.host.ip === ip && s.user === "root");
 
-  function tasks() {
+  // each tier teaches a DIFFERENT path on a different host.
+  const TIERS = {
+    easy: { code: "TRN-SANDBOX", ip: "10.13.37.20", path: "Brute-force → sudo (GTFOBins)" },
+    medium: { code: "PHAROS", ip: "10.20.5.30", path: "Credential disclosure → SSH → sudo editor escape" },
+    hard: { code: "ORIONBUILD", ip: "10.10.10.13", path: "Sophisticated multi-path — no guidance" },
+  };
+
+  function tasksFor(tier) {
+    const ip = tier.ip;
+    if (tier.code === "TRN-SANDBOX") return [
+      { obj: "Discover the host's services and versions.",
+        chk: (st) => (st.scanned[ip] || new Set()).has(22), runs: ["nmap -sV " + ip],
+        hint: "Fingerprint with a version scan first." },
+      { obj: "Brute-force the weak 'student' SSH password.",
+        chk: (st) => hasCred(st, "student"), runs: ["hydra -l student -P wordlists/common.txt ssh://" + ip],
+        hint: "An online dictionary attack on SSH will crack a weak seasonal password." },
+      { obj: "Log in with the cracked credential.",
+        chk: (st) => hasSession(st, ip, "student"), runs: ["ssh student@" + ip],
+        note: "(tap the autofill pill at the password prompt)",
+        hint: "SSH in as the account you just cracked." },
+      { obj: "Abuse the account's sudo rights to become root.",
+        chk: (st) => rooted(st, ip), runs: ["sudo -l", "sudo find . -exec /bin/bash \\; -quit"],
+        hint: "`sudo -l` reveals a whitelisted binary you can turn into a root shell (GTFOBins)." },
+      { obj: "Recover the proof artefact.",
+        chk: (st) => st.config.completed.includes("TRN-SANDBOX"), runs: ["cat /root/flag.txt"],
+        hint: "Read root's flag." },
+    ];
+    if (tier.code === "PHAROS") return [
+      { obj: "Discover the host's services.",
+        chk: (st) => (st.scanned[ip] || new Set()).has(21), runs: ["nmap -sV " + ip],
+        hint: "Scan first — note the FTP service." },
+      { obj: "Recover credentials the FTP service leaks.",
+        chk: (st) => hasCred(st, "relay"), runs: ["ftp " + ip, "curl ftp://" + ip + "/welcome.txt"],
+        hint: "Read the anonymous FTP files — one discloses a maintenance login." },
+      { obj: "Reuse the credential over SSH.",
+        chk: (st) => hasSession(st, ip, "relay"), runs: ["ssh relay@" + ip],
+        note: "(tap the autofill pill at the password prompt)",
+        hint: "The disclosed password is reused on SSH." },
+      { obj: "Escalate to root via the whitelisted editor.",
+        chk: (st) => rooted(st, ip), runs: ["sudo -l", "sudo vim -c ':!/bin/sh'"],
+        hint: "`sudo -l` shows an editor you can shell out of." },
+      { obj: "Recover the proof artefact.",
+        chk: (st) => st.config.completed.includes("PHAROS"), runs: ["cat /root/proof.txt"],
+        hint: "Read root's proof." },
+    ];
+    // hard: ORION, single objective, no step guidance
     return [
-      { obj: "Identify which services the host exposes and their versions.",
-        chk: (st) => (st.scanned[TARGET] || new Set()).has(22),
-        runs: ["nmap -sV " + TARGET],
-        hint: "Fingerprint the host with a version scan before anything else." },
-      { obj: "Recover a valid login for the 'student' service account.",
-        chk: (st) => hasCred(st, "student"),
-        runs: ["hydra -l student -P wordlists/common.txt ssh://" + TARGET],
-        hint: "The account uses a weak seasonal password. An online dictionary attack against SSH will find it." },
-      { obj: "Use the recovered credential to obtain an interactive foothold.",
-        chk: (st) => hasSession(st, TARGET, "student"),
-        runs: ["ssh student@" + TARGET],
-        note: "(when prompted, the password is summer2023)",
-        hint: "Log in over SSH as the account whose password you just cracked." },
-      { obj: "Enumerate the account's sudo rights and abuse them to reach root.",
-        chk: (st) => hasSession(st, TARGET, "root"),
-        runs: ["sudo -l", "sudo find . -exec /bin/bash \\; -quit"],
-        hint: "Check `sudo -l`. A whitelisted binary that can run other programs (GTFOBins) is a direct path to a root shell." },
-      { obj: "Recover the proof artefact from the root account.",
-        chk: (st) => st.config.completed.includes("TRN-SANDBOX"),
-        runs: ["cat /root/flag.txt"],
-        hint: "Read root's proof file now that you are uid 0." },
+      { obj: "Gain sudo / root on the rogue trading node — any path you can find.",
+        chk: (st) => st.config.completed.includes("ORIONBUILD"), runs: [],
+        hint: "Recon widely. Tap ⌗ cmds for the command palette, or AIH if you stall." },
     ];
   }
 
   function guidance(task, diff) {
     if (diff === "easy") {
       const pills = (task.runs || []).map((cmd) => C.tap(cmd, cmd, "pill")).join("");
-      C.write("    " + pills + (task.note ? " " + C.c(task.note, "grey") : ""));
+      if (pills) C.write("    " + pills + (task.note ? " " + C.c(task.note, "grey") : ""));
     } else if (diff === "medium") {
       C.write(C.c("    hint: " + task.hint, "grey"));
     }
@@ -49,18 +76,19 @@
 
   async function runTraining(diff) {
     diff = diff.toLowerCase();
-    const tier = { easy: "Easy / Recruit", medium: "Medium / Operator", hard: "Hard / Specialist" }[diff] || "Easy / Recruit";
-    state.loadNetwork(window.WORLD.allScenarios()["TRN-SANDBOX"]);
+    const tier = TIERS[diff] || TIERS.easy;
+    const label = { easy: "Easy / Recruit", medium: "Medium / Operator", hard: "Hard / Specialist" }[diff];
+    state.loadNetwork(window.WORLD.allScenarios()[tier.code]);
     const sh = new Shell(state);
-    const T = tasks();
+    const T = tasksFor(tier);
     let idx = 0;
     C.clear();
-    C.box("TRAINING MODULE  ::  " + tier, [
-      C.c("Lab host: TRN-SANDBOX-01 (10.13.37.20)", "white"),
-      C.c("This is the live operator shell. Tooling is identical to a real", "grey"),
-      C.c("engagement; objectives below track your progress.", "grey"),
+    C.box("TRAINING  ::  " + label, [
+      C.c("Lab: " + tier.code + " (" + tier.ip + ")", "white"),
+      C.c("Path: " + tier.path, "grey"),
       "",
-      C.c("Type `objective` to repeat the current goal, `back` to leave.", "grey"),
+      C.c("Live operator shell. `objective` repeats the goal · `back` leaves.", "grey"),
+      C.c("Tap ", "grey") + C.tap("⌗ cmds", "commands", "cmd") + C.c(" for the command palette.", "grey"),
     ], 66);
     C.write("");
     const showObjective = () => {
@@ -105,13 +133,10 @@
     C.clear();
     C.write(C.c("  " + net.code, "accent", "bold") + C.c("   " + net.title, "grey"));
     C.write(C.c("  scope " + net.subnet + "  ·  workstation " + state.operatorHost.ip, "grey"));
-    C.write(C.c("  tap ", "grey") + C.tap("menu", "menu", "cmd") + C.c(" for actions  ·  ", "grey") +
-            C.tap("back", "back") + C.c(" to exit", "grey"));
+    C.write(C.c("  tap ", "grey") + C.tap("≡ menu", "menu", "cmd") + C.c(" · ", "grey") +
+            C.tap("⌗ commands", "commands", "cmd") + C.c(" · ", "grey") + C.tap("AIH", "aih", "cmd") +
+            C.c(" · ", "grey") + C.tap("back", "back") + C.c(" to exit", "grey"));
     C.write("");
-    if (state.config.hints) {
-      C.write(C.c("  start with recon: ", "grey") + C.tap("nmap -sV " + net.objective, "nmap -sV " + net.objective, "pill"));
-      C.write("");
-    }
     const sh = new Shell(state);
     while (true) {
       const raw = await C.readLine(sh.prompt());
@@ -136,8 +161,22 @@
     C.write("");
     C.write("  " + C.c("training ", "white") + C.tap("easy", "training easy", "pill") +
             C.tap("medium", "training medium", "pill") + C.tap("hard", "training hard", "pill"));
-    C.write("  " + C.tap("AIH — where to start", "aih", "pill") + C.tap("settings", "settings", "pill") +
-            C.tap("status", "status", "pill"));
+    C.write("  " + C.tap("⌗ commands", "commands", "pill") + C.tap("AIH — where to start", "aih", "pill") +
+            C.tap("settings", "settings", "pill") + C.tap("status", "status", "pill"));
+    C.write("");
+  };
+  CONSOLE.commands = function () {
+    C.write("");
+    C.write(C.c("  command palette", "accent", "bold") + C.c("   tap to run", "grey"));
+    C.hr(40);
+    C.write("  " + C.c("navigate ", "cyan") + C.tap("menu", "menu", "pill") + C.tap("scenarios", "scenarios", "pill") +
+            C.tap("status", "status", "pill") + C.tap("settings", "settings", "pill") + C.tap("aih", "aih", "pill"));
+    C.write("  " + C.c("engage   ", "cyan") + Object.keys(scenarios).map((code) => C.tap(code, "engage " + code, "pill")).join(""));
+    C.write("  " + C.c("training ", "cyan") + C.tap("easy", "training easy", "pill") +
+            C.tap("medium", "training medium", "pill") + C.tap("hard", "training hard", "pill"));
+    C.write("  " + C.c("brief    ", "cyan") + Object.keys(scenarios).map((code) => C.tap(code, "brief " + code, "pill")).join(""));
+    C.write("");
+    C.write(C.c("  (inside an engagement, ⌗ commands lists the full toolset)", "grey"));
     C.write("");
   };
   CONSOLE.aih = function () {
@@ -206,11 +245,11 @@
     let tier = args.length ? args[0].toLowerCase() : null;
     if (!["easy", "medium", "hard"].includes(tier)) {
       C.write("");
-      C.write(C.c("  training", "accent", "bold") + C.c("   (tap a tier)", "grey"));
-      C.hr(34);
-      C.write("  " + C.tap("easy", "training easy", "cmd") + C.c("    full command walkthrough", "grey"));
-      C.write("  " + C.tap("medium", "training medium", "cmd") + C.c("  conceptual hints only", "grey"));
-      C.write("  " + C.tap("hard", "training hard", "cmd") + C.c("    objectives only — no guidance", "grey"));
+      C.write(C.c("  training", "accent", "bold") + C.c("   (each tier is a different target & path)", "grey"));
+      C.hr(40);
+      C.write("  " + C.tap("easy", "training easy", "cmd") + C.c("    brute-force → sudo  (TRN-SANDBOX)", "grey"));
+      C.write("  " + C.tap("medium", "training medium", "cmd") + C.c("  credential disclosure → SSH → sudo  (PHAROS)", "grey"));
+      C.write("  " + C.tap("hard", "training hard", "cmd") + C.c("    rogue-bot node, no guidance  (ORIONBUILD)", "grey"));
       C.write("");
       return;
     }
@@ -300,7 +339,8 @@
     scenarios = window.WORLD.allScenarios();
     C.clear();
     C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell", "grey"));
-    C.write(C.c("tap ", "grey") + C.tap("≡ menu", "menu", "cmd") + C.c(" to navigate  ·  ", "grey") +
+    C.write(C.c("tap ", "grey") + C.tap("≡ menu", "menu", "cmd") + C.c(" · ", "grey") +
+            C.tap("⌗ commands", "commands", "cmd") + C.c(" · ", "grey") +
             C.tap("AIH", "aih", "cmd") + C.c(" for guidance", "grey"));
     C.write("");
     await consoleLoop();

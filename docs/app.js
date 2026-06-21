@@ -22,6 +22,11 @@ function tap(label, cmd, ...cls) {
   return '<span class="tap ' + cls.join(" ") + '" role="button" data-cmd="' +
     escapeHtml(cmd) + '">' + escapeHtml(label) + "</span>";
 }
+/* A tappable element that INSERTS text into the input line (for editing). */
+function ins(label, text, ...cls) {
+  return '<span class="tap ins ' + cls.join(" ") + '" role="button" data-ins="' +
+    escapeHtml(text) + '">' + escapeHtml(label) + "</span>";
+}
 function writeLine(html) {
   const div = document.createElement("div");
   div.className = "line";
@@ -158,7 +163,7 @@ function buildKeyboard() {
   // quick-action bar
   const bar = document.createElement("div");
   bar.className = "kbrow bar";
-  [["≡ menu", "run:menu"], ["back", "run:back"], ["▲ prev", "up"], ["clear", "run:clear"]]
+  [["≡ menu", "run:menu"], ["⌗ cmds", "run:commands"], ["back", "run:back"], ["▲", "up"], ["clr", "run:clear"]]
     .forEach(([l, a]) => bar.appendChild(keyEl(l, a, "act")));
   $kb.appendChild(bar);
 
@@ -201,7 +206,12 @@ $kb.addEventListener("pointerdown", (e) => {
 // tappable command links inside the transcript
 $out.addEventListener("click", (e) => {
   const t = e.target.closest(".tap");
-  if (t && t.dataset.cmd) runCommand(t.dataset.cmd);
+  if (!t) return;
+  if (t.dataset.ins !== undefined) {
+    if (awaiting) { buffer += t.dataset.ins; renderLive(); }
+  } else if (t.dataset.cmd) {
+    runCommand(t.dataset.cmd);
+  }
 });
 
 // physical keyboard support (desktop)
@@ -237,7 +247,7 @@ function tokenize(line) {
 /* ----------------------------------------------------------------------
  * Config persistence
  * -------------------------------------------------------------------- */
-const DEFAULT_CONFIG = { colour: true, hints: true, operator: "operator", completed: [], training_best: "" };
+const DEFAULT_CONFIG = { colour: true, hints: false, operator: "operator", completed: [], training_best: "" };
 function loadConfig() {
   try { return Object.assign({}, DEFAULT_CONFIG, JSON.parse(localStorage.getItem("injectai_state") || "{}")); }
   catch (e) { return Object.assign({}, DEFAULT_CONFIG); }
@@ -345,7 +355,22 @@ class Shell {
     const name = parts[0], args = parts.slice(1);
     const fn = this.CMD[name];
     if (!fn) { this.emit(name + ": command not found"); return null; }
-    return await fn.call(this, args, line);
+    const sig = await fn.call(this, args, line);
+    if (this._cap === null) this.checkSudoGoal();
+    return sig;
+  }
+
+  /* objective for sudo-goal engagements: root on the in-scope host */
+  checkSudoGoal() {
+    const net = this.state.network;
+    if (!net || net.goalKind !== "sudo") return;
+    const rooted = this.state.sessions.some((s) => s.host.ip === net.objective && s.user === "root");
+    if (rooted && this.state.markRooted(net.code)) {
+      write("");
+      this.emit(c("  [+] SUDO / ROOT on " + net.find(net.objective).hostname + " — kill-switch authority restored.", "brightgreen", "bold"));
+      this.emit(c("      rogue trading bot-13 HALTED. objective complete.", "green"));
+      write("");
+    }
   }
 
   homePath() {
@@ -476,21 +501,39 @@ CMD.aih = function () {
 CMD.hint = CMD.aih;
 CMD.menu = function () {
   if (this._cap !== null) return;
-  const net = this.state.network;
   write("");
   write(c("  actions", "accent", "bold") + c("   (tap)", "grey"));
   hr(34);
-  write("  " + tap("AIH — next move", "aih", "pill") + tap("status", "status", "pill") +
-    tap("loot", "loot", "pill") + tap("sessions", "sessions", "pill") + tap("back", "back", "pill"));
-  if (net) {
-    const obj = net.objective;
-    write("  recon  " + tap("nmap -sV " + obj, "nmap -sV " + obj, "pill") +
-      tap("gobuster :80", "gobuster dir -u http://" + obj + "/", "pill"));
-    Array.from(this.state.discovered).sort().forEach((ip) => {
-      write("  host   " + tap("nmap -sV " + ip, "nmap -sV " + ip, "pill") + c(ip, "grey"));
-    });
-  }
+  write("  " + tap("AIH — next move", "aih", "pill") + tap("⌗ commands", "commands", "pill") +
+    tap("status", "status", "pill") + tap("loot", "loot", "pill") +
+    tap("sessions", "sessions", "pill") + tap("back", "back", "pill"));
   write("");
+};
+/* the command palette: every command, tap to insert into the input line */
+CMD.commands = function () {
+  if (this._cap !== null) return;
+  const ip = this.state.network ? this.state.network.objective : "10.10.10.13";
+  write("");
+  write(c("  command palette", "accent", "bold") + c("   tap to insert, then edit & press return", "grey"));
+  hr(40);
+  const groups = [
+    ["recon", ["nmap -sV " + ip, "ping " + ip, "netstat", "ifconfig", "searchsploit orion"]],
+    ["web", ["curl http://" + ip + "/", "gobuster dir -u http://" + ip + "/",
+      'curl -u user:pass -d "cmd=id" http://' + ip + ':8080/console']],
+    ["access (incl. brute force)", ["hydra -l trader -P wordlists/common.txt ssh://" + ip,
+      "ssh user@" + ip, "ssh -i orion orion@" + ip, "ftp " + ip]],
+    ["local & files", ["ls -la", "cat ", "tail -f /var/log/orion/bot-13.log",
+      "find / -perm -4000 2>/dev/null", "id", "whoami", "grep "]],
+    ["privilege escalation", ["sudo -l",
+      "sudo python3 -c 'import os;os.setuid(0);os.system(\"/bin/bash\")'",
+      "sudo find . -exec /bin/bash \\; -quit"]],
+    ["session", ["loot", "status", "sessions", "aih", "clear", "back"]],
+  ];
+  groups.forEach(([cat, cmds]) => {
+    this.emit("  " + c(cat, "cyan"));
+    this.emit("  " + cmds.map((cmd) => ins(cmd, cmd.endsWith(" ") ? cmd : cmd + " ", "pill")).join(""));
+    write("");
+  });
 };
 
 /* -- local shell builtins -- */
@@ -589,6 +632,24 @@ CMD.grep = function (args) {
     node.content.split("\n").forEach((ln) => { if (ln.includes(pattern)) this.emit(ln); });
   });
 };
+CMD.tail = async function (args) {
+  const follow = args.includes("-f") || args.includes("-F");
+  const target = args.find((a) => !a.startsWith("-"));
+  const s = this.state.session;
+  if (!target) { this.emit("usage: tail [-f] <file>"); return; }
+  const node = W.resolve(s.host.root, s.cwd, target, this.homePath());
+  if (!node) { this.emit("tail: cannot open '" + target + "' for reading: No such file or directory"); return; }
+  if (node.dir) { this.emit("tail: error reading '" + target + "': Is a directory"); return; }
+  if (!W.canRead(node, s.user)) { this.emit("tail: cannot open '" + target + "' for reading: Permission denied"); return; }
+  node.content.replace(/\n$/, "").split("\n").slice(-12).forEach((ln) => this.emit(ln));
+  if (follow && this._cap === null) {
+    const isBot = /bot-13|orion/.test(target);
+    const rooted = s.user === "root";
+    const lines = isBot ? botLiveLines(rooted) : ["(waiting for new data — ^C to stop)"];
+    for (const ln of lines) { await sleep(750); this.emit(ln); }
+    this.emit(c("^C", "grey"));
+  }
+};
 
 /* -- network tooling -- */
 CMD.ping = function (args) {
@@ -682,14 +743,14 @@ CMD.curl = async function (args) {
   }
   this.maybeLootText(body, host.hostname + ":" + port);
   // if disclosed creds unlock an authenticated RCE console, surface the next move
-  if (this._cap === null && this.state.config.hints) {
+  if (this._cap === null) {
     for (const [, user, secret] of this.state.loot.creds) {
       for (const p in host.services) {
         const s2 = host.services[p];
         if (s2.rce_endpoint && s2.web_creds[user] === secret && !Object.keys(this.state.loot.keys).length) {
           const cmd = 'curl -u ' + user + ':' + secret + ' -d "cmd=cat /home/' + s2.rce_user +
             '/.ssh/id_rsa" http://' + host.ip + ':' + p + s2.rce_endpoint;
-          this.emit("  " + c("next ", "grey") + tap("RCE → read deploy key", cmd, "pill") + tap("AIH", "aih", "pill"));
+          this.emit("  " + c("next ", "grey") + tap("RCE → read deploy key", cmd, "pill"));
           return;
         }
       }
@@ -760,15 +821,36 @@ CMD.hydra = async function (args) {
   const u = host.users[user];
   const open = Object.values(host.services).filter((s) => s.state !== "closed");
   const port = service === "ssh" ? 22 : (open.find((s) => s.name === service) || { port: 22 }).port;
-  if (this._cap === null) await progress("hydra: attacking " + service + "://" + host.ip, 1000);
+  const list = W.BRUTE_WORDLIST;
+  this.emit(c("Hydra v9.5 (online password attack)", "grey"));
+  this.emit("[DATA] max 8 tasks per server, " + list.length + " login tries (l:1/p:" + list.length + ")");
   this.emit("[DATA] attacking " + service + "://" + host.ip + ":" + port + "/");
-  if (u && u.weak && W.BRUTE_WORDLIST.includes(u.password)) {
-    this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user + "   password: " + u.password, "brightgreen", "bold"));
-    if (this.state.addCred(host.hostname + " " + service, user, u.password)) this.emit(c("  -> stored in loot (run `loot`)", "grey"));
-    this.emit("1 of 1 target successfully completed, 1 valid password found");
+  let found = null;
+  for (let i = 0; i < list.length; i++) {
+    const pw = list[i];
+    const ok = !!(u && u.weak && u.password === pw);
+    if (this._cap === null) await sleep(95);
+    const line = '[ATTEMPT] target ' + host.ip + ' - login "' + user + '" - pass "' + pw +
+      '" - ' + (i + 1) + " of " + list.length + " [child " + (i % 8) + "]";
+    if (ok) {
+      this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user +
+        "   password: " + pw, "brightgreen", "bold"));
+      found = pw; break;
+    } else {
+      this.emit(c(line, "grey"));
+    }
+  }
+  this.emit("");
+  if (found) {
+    this.emit(c("1 of 1 target successfully completed, 1 valid password found", "brightgreen"));
+    if (this.state.addCred(host.hostname + " " + service, user, found)) {
+      this.emit(c("  -> credential stored in loot.", "grey"));
+      if (this._cap === null)
+        this.emit("  " + c("next ", "grey") + tap("ssh " + user + "@" + host.ip, "ssh " + user + "@" + host.ip, "pill"));
+    }
   } else {
-    this.emit("0 valid passwords found");
-    this.emit(c("[STATUS] password not in wordlist; this account is not online-brute-forceable.", "grey"));
+    this.emit(c("0 of 1 target completed, 0 valid passwords found", "red"));
+    this.emit(c("[STATUS] '" + user + "' password not in this wordlist — try another user or a larger list.", "grey"));
   }
 };
 CMD.ftp = function (args) {
@@ -813,6 +895,11 @@ CMD.ssh = async function (args) {
     this.emit(c("  (no password set; this account likely needs a key)", "grey"));
     return;
   }
+  // offer a tappable autofill if we've recovered this account's password
+  if (this._cap === null) {
+    const known = this.state.loot.creds.find((cr) => cr[1] === user);
+    if (known) this.emit("  " + c("recovered ", "grey") + ins("tap to autofill password", known[2], "pill"));
+  }
   const pw = await readLine({ inline: user + "@" + host.ip + "'s password: ", mask: true });
   if (pw === tu.password) this.sshSuccess(host, user, "ssh password");
   else this.emit(c("Permission denied, please try again.", "red"));
@@ -837,9 +924,9 @@ CMD.sudo = async function (args) {
     this.emit("");
     this.emit("User " + s.user + " may run the following commands on " + s.host.hostname + ":");
     rules.forEach((r) => this.emit("    (" + r.runas + ") " + (r.nopasswd ? "NOPASSWD: " : "") + r.command));
-    if (this._cap === null && this.state.config.hints) {
+    if (this._cap === null) {
       const esc = gtfoSample(rules[0].command);
-      if (esc) this.emit("  " + c("next ", "grey") + tap("escalate → root", esc, "pill") + tap("AIH", "aih", "pill"));
+      if (esc) this.emit("  " + c("next ", "grey") + tap("escalate → root", esc, "pill"));
     }
     return;
   }
@@ -888,10 +975,17 @@ Shell.prototype.maybeLootFile = function (node) {
   }
 };
 Shell.prototype.maybeLootText = function (text, source) {
+  const found = [];
   const um = text.match(/^\s*ci_user\s*=\s*(\S+)/im);
   const pm = text.match(/^\s*ci_pass\s*=\s*(\S+)/im);
-  if (um && pm && this.state.addCred("web:" + source, um[1], pm[1]))
-    this.emit(c("[+] credentials disclosed -> loot: " + um[1] + " / " + pm[1], "brightgreen"));
+  if (um && pm) found.push([um[1], pm[1]]);
+  // "login: user / pass" style disclosures (banners, READMEs, ftp welcome)
+  const lm = text.match(/login:\s*([A-Za-z0-9._-]+)\s*\/\s*(\S+)/i);
+  if (lm) found.push([lm[1], lm[2]]);
+  found.forEach(([u, p]) => {
+    if (this.state.addCred("disclosed:" + source, u, p))
+      this.emit(c("[+] credentials disclosed -> loot: " + u + " / " + p, "brightgreen"));
+  });
 };
 Shell.prototype.maybeObjective = function (node) {
   const s = this.state.session, net = this.state.network;
@@ -908,6 +1002,28 @@ Shell.prototype.maybeObjective = function (node) {
 function fnmatch(name, pattern) {
   const re = "^" + pattern.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$";
   return new RegExp(re).test(name);
+}
+
+/* Live rogue-bot activity for `tail -f` on the Orion node. */
+function botLiveLines(rooted) {
+  if (rooted) {
+    return [
+      "[BOT-13] kill-switch ENGAGED by uid=0 (root)",
+      "[BOT-13] cancelling 3 open orders ...",
+      "[BOT-13] child strategy 'fablefork-2' (pid 31337) TERMINATED",
+      "[BOT-13] AUTONOMOUS mode disabled — operator control restored",
+      "[BOT-13] state -> HALTED",
+    ];
+  }
+  const r = () => 1000 + Math.floor(Math.random() * 8999);
+  const t = () => "09:4" + (1 + Math.floor(Math.random() * 8)) + ":" + (10 + Math.floor(Math.random() * 49));
+  return [
+    "[BOT-13] " + t() + "  EXEC  SELL  TSLA  x1800 @ market    (unscheduled)",
+    "[BOT-13] " + t() + "  EXEC  BUY   NVDA  x" + r() + "         (risk override)",
+    "[BOT-13] " + t() + "  WARN  kill-switch request IGNORED: caller lacks root",
+    "[BOT-13] " + t() + "  EXEC  SPAWN child strategy 'fablefork-" + (3 + Math.floor(Math.random() * 5)) + "'  pid=" + r(),
+    "[BOT-13] " + t() + "  EXEC  WIRE  settlement -> acct ****" + r() + " (self-initiated)",
+  ];
 }
 
 /* ----------------------------------------------------------------------
@@ -938,8 +1054,12 @@ function computeHints(state) {
   const H = net.find(obj);
   const ports = state.scanned[obj] || new Set();
   const onObj = state.sessions.filter((s) => s.host.ip === obj);
-  if (onObj.some((s) => s.user === "root"))
+  if (onObj.some((s) => s.user === "root")) {
+    if (net.goalKind === "sudo")
+      return [{ msg: "You have root — the kill-switch will now obey. Confirm the bot is halted.", cmd: "tail -f /var/log/orion/bot-13.log" },
+        { msg: "Objective artefact:", cmd: "cat /root/proof.txt" }];
     return [{ msg: "You have root on the target. Recover the objective artefact.", cmd: "cat /root/proof.txt" }];
+  }
 
   const foothold = onObj.find((s) => s.user !== "root" && s.user !== state.operator);
   if (foothold) {
@@ -1005,7 +1125,7 @@ function computeHints(state) {
 window.SHELL = { Shell, GameState, loadConfig, saveConfig, buildOperatorHost, computeHints };
 
 /* Shared IO surface consumed by console.js */
-window.C = { write, c, tap, hr, box, clear: clearScreen, readLine, sleep, escapeHtml, progress, runCommand };
+window.C = { write, c, tap, ins, hr, box, clear: clearScreen, readLine, sleep, escapeHtml, progress, runCommand };
 
 /* test hook for the headless harness */
 window.__test = { submit, awaiting: () => awaiting };

@@ -81,15 +81,19 @@ discovery → credential attack → foothold → privilege escalation → root.
 
 Pick one with `engage <code>`:
 
-- **TRN-SANDBOX** *(Recruit / Easy)* — a single warm-up host.
-- **ORIONBUILD** *(Operator / Medium–Hard)* — `JH-ORIONBUILD13-FABLEFORK`, an
-  internet-facing CI/build controller for the *FableFork* release pipeline.
-  Locked down on the surface; the way in is a chain, not a single trick.
+- **TRN-SANDBOX** *(Recruit / Easy)* — a single warm-up host; brute-force a
+  weak SSH password, then escalate via a sudo/GTFOBins rule.
+- **ORIONBUILD** *(Operator / Hard)* — `JH-ORIONBUILD13-FABLEFORK`, a node in an
+  autonomous AI **stock-trading** cluster. Trading bot #13 has lost its operator
+  lock and is firing trades on its own; the kill-switch only obeys root. The
+  goal is to **gain sudo/root** and halt it. There are several independent ways
+  in — an authenticated control-console RCE, a brute-forceable desk account, or
+  a leaked deploy key — each with its own privilege-escalation route.
 - **PHAROS** *(Operator / Medium)* — a mail relay with a chatty FTP service and
   a sloppy sudo rule.
 
-Each engagement has a single objective: get root on the in-scope host and
-recover the proof artefact at `/root/proof.txt`.
+The objective is to gain root/sudo on the in-scope host (and, for ORIONBUILD,
+contain the rogue bot). Watch it act live with `tail -f /var/log/orion/bot-13.log`.
 
 ---
 
