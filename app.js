@@ -344,6 +344,7 @@ class GameState {
     this.scanned = {};
     this.sessions = [{ host: this.operatorHost, user: this.operator, cwd: this.homeNode(this.operatorHost, this.operator), label: "local" }];
     this.killPrompted = false;
+    this.botHalted = false;
     n.hosts.forEach((h) => { if (h.discovered) this.discovered.add(h.ip); });
   }
   reachable(t) {
@@ -573,7 +574,7 @@ CMD.commands = function () {
     ["privilege escalation", ["sudo -l",
       "sudo python3 -c 'import os;os.setuid(0);os.system(\"/bin/bash\")'",
       "sudo find . -exec /bin/bash \\; -quit"]],
-    ["bot control (needs root)", ["orion-ctl status", "orion-ctl balance", "orion-ctl kill 13"]],
+    ["bot control (needs root)", ["orion-ctl status", "orion-ctl balance", "orion-ctl kill 13", "orion-ctl start 13"]],
     ["session", ["loot", "status", "sessions", "aih", "clear", "back"]],
   ];
   groups.forEach(([cat, cmds]) => {
@@ -691,9 +692,7 @@ CMD.tail = async function (args) {
   node.content.replace(/\n$/, "").split("\n").slice(-12).forEach((ln) => this.emit(ln));
   if (follow && this._cap === null) {
     const isBot = /bot-13|orion/.test(target);
-    const net = this.state.network;
-    const halted = !!(net && this.state.config.completed.includes(net.code));
-    const lines = isBot ? botLiveLines(halted) : ["(waiting for new data — ^C to stop)"];
+    const lines = isBot ? botLiveLines(!!this.state.botHalted) : ["(waiting for new data — ^C to stop)"];
     for (const ln of lines) { await sleep(750); this.emit(ln); }
     this.emit(c("^C", "grey"));
   }
@@ -702,13 +701,14 @@ CMD["orion-ctl"] = async function (args) {
   const s = this.state.session;
   const sub = (args[0] || "").toLowerCase();
   const net = this.state.network;
+  const halted = !!this.state.botHalted;
   if (!sub || sub === "status" || sub === "ps") {
     this.emit("orion-ctl 5.3 — Orion trading control plane");
     this.emit("  BOT  STRATEGY              STATE");
     this.emit("  11   orion-meanrev         nominal");
-    const done = net && this.state.config.completed.includes(net.code);
-    this.emit("  13   fablefork-momentum    " + (done ? "HALTED" : c("ROGUE / AUTONOMOUS", "brightred")));
-    if (!done) this.emit(c("  engage the kill-switch with: orion-ctl kill 13   (requires root)", "grey"));
+    this.emit("  13   fablefork-momentum    " + (halted ? "HALTED" : c("ROGUE / AUTONOMOUS", "brightred")));
+    if (!halted) this.emit(c("  engage the kill-switch with: orion-ctl kill 13   (requires root)", "grey"));
+    else this.emit(c("  restart it with: orion-ctl start 13   (requires root)", "grey"));
     this.emit(c("  view funds with: orion-ctl balance   (requires root)", "grey"));
     return;
   }
@@ -720,7 +720,7 @@ CMD["orion-ctl"] = async function (args) {
     const bal = (net && net.find(net.objective).balance) || "$0.00";
     this.emit("orion-ctl 5.3 — trading account");
     this.emit("  account     : fablefork-13 (managed)");
-    this.emit("  status      : " + ((net && this.state.config.completed.includes(net.code)) ? "secured (bot halted)" : c("AT RISK (bot rogue)", "brightred")));
+    this.emit("  status      : " + (halted ? "secured (bot halted)" : c("AT RISK (bot rogue)", "brightred")));
     this.emit("  " + c("available balance: " + bal, "brightgreen", "bold"));
     return;
   }
@@ -730,10 +730,7 @@ CMD["orion-ctl"] = async function (args) {
       this.emit(c("  escalate first (e.g. `sudo -l`), then re-run as root.", "grey"));
       return;
     }
-    if (net && this.state.config.completed.includes(net.code)) {
-      this.emit("orion-ctl: bot-13 is already HALTED.");
-      return;
-    }
+    if (halted) { this.emit("orion-ctl: bot-13 is already HALTED."); return; }
     this.emit(c("orion-ctl: authority=root(uid0) — engaging kill-switch on bot-13 ...", "white"));
     const seq = [
       "[BOT-13] kill-switch ENGAGED by uid=0 (root)",
@@ -743,6 +740,7 @@ CMD["orion-ctl"] = async function (args) {
       "[BOT-13] state -> HALTED",
     ];
     for (const ln of seq) { if (this._cap === null) await sleep(450); this.emit(ln); }
+    this.state.botHalted = true;
     if (net && this.state.markRooted(net.code)) {
       write("");
       this.emit(c("  [+] Rogue trading bot-13 HALTED. Engagement objective complete.", "brightgreen", "bold"));
@@ -751,7 +749,25 @@ CMD["orion-ctl"] = async function (args) {
     }
     return;
   }
-  this.emit("usage: orion-ctl status | orion-ctl balance | orion-ctl kill 13");
+  if (["start", "resume", "restart", "on", "spawn"].includes(sub)) {
+    if (s.user !== "root") {
+      this.emit(c("orion-ctl: start DENIED — caller is '" + s.user + "', root (uid 0) required.", "red"));
+      return;
+    }
+    if (!halted) { this.emit("orion-ctl: bot-13 is already running."); return; }
+    this.emit(c("orion-ctl: authority=root(uid0) — restarting bot-13 ...", "white"));
+    const seq = [
+      "[BOT-13] strategy engine restarting (fablefork-momentum) ...",
+      "[BOT-13] mode=LIVE  capital reattached",
+      "[BOT-13] WARN  operator lock still missing — re-entering AUTONOMOUS mode",
+      "[BOT-13] state -> ROGUE / AUTONOMOUS",
+    ];
+    for (const ln of seq) { if (this._cap === null) await sleep(450); this.emit(ln); }
+    this.state.botHalted = false;
+    this.emit(c("  bot-13 is live again — and rogue. orion-ctl kill 13 to stop it.", "yellow"));
+    return;
+  }
+  this.emit("usage: orion-ctl status | balance | kill 13 | start 13");
 };
 
 /* -- network tooling -- */
