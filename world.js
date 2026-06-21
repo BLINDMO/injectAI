@@ -54,7 +54,9 @@ const EXPLOIT_DB = [
 ];
 
 const BRUTE_WORDLIST = ["123456", "password", "admin", "letmein", "summer2023",
-  "winter2024", "root", "toor", "changeme", "qwerty", "P@ssw0rd", "Relay!ng-Ph4ros"];
+  "winter2024", "qwerty", "iloveyou", "dragon", "monkey", "football", "trustno1",
+  "Sunshine2024", "Spring2024!", "root", "toor", "changeme", "P@ssw0rd",
+  "Relay!ng-Ph4ros", "Trader2024", "hunter2", "baseball", "welcome1"];
 
 /* ----------------------------------------------------------------------
  * Service / host / network constructors
@@ -105,72 +107,103 @@ function trainingHost() {
   };
 }
 
-/* ===================== ORIONBUILD (flagship) ======================== */
-const CI_USER = "forge";
-const CI_PASS = "Sp1n-The-F0rge-2o24";
-const CONFIG_BAK =
-  "# fableforge-ci config backup -- DO NOT COMMIT (oops)\n" +
-  "[server]\nurl = http://localhost:8080/\nnode = JH-ORIONBUILD13-FABLEFORK\n\n" +
-  "[credentials]\n# console operator used by the deploy bot\n" +
-  "ci_user = " + CI_USER + "\nci_pass = " + CI_PASS + "\n\n" +
-  "[database]\ndb_host = 127.0.0.1\ndb_user = forge_ro\ndb_pass = readonly-not-secret\n";
-const ID_RSA =
+/* ===================== ORIONBUILD (flagship) ========================
+ * JH-ORIONBUILD13-FABLEFORK is a node in the "Orion" autonomous AI
+ * stock-trading cluster. Trading bot #13 (the FableFork fork) has lost its
+ * operator lock and is now issuing trades/commands on its own. The mission:
+ * break in and obtain sudo/root so the kill-switch authority is restored and
+ * the rogue bot can be halted. There are THREE independent ways in.
+ * ------------------------------------------------------------------ */
+const DASH_USER = "orion-ops";
+const DASH_PASS = "0r10n-C0ntr0l-2o25";
+const TRADER_PASS = "Sunshine2024";   // weak desk password -> brute-forceable
+
+const ORION_CONF =
+  "# Orion Control dashboard -- config backup (DO NOT SHIP)\n" +
+  "[dashboard]\nurl = http://localhost:8080/\n" +
+  "ci_user = " + DASH_USER + "\nci_pass = " + DASH_PASS + "\n\n" +
+  "[cluster]\n" +
+  "# desk operators share a login until SSO lands\n" +
+  "operators = orion, trader\n" +
+  "note = trader still uses the shared trading-desk password, ROTATE IT\n";
+
+const ORION_KEY =
   "-----BEGIN OPENSSH PRIVATE KEY-----\n" +
   "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n" +
-  "QyNTUxOQAAACDFableforgeCIdeploybotkeyDONOTSHAREaaaaaaaaaaaaaaaaaaaaAAAA\n" +
-  "KFsorageyORIONBUILD13fableforkkeymaterialsimulatednotarealkeyAAAAtzc2gt\n" +
+  "QyNTUxOQAAACDOr1onTr4d1ngB0tdeploykeyDONOTSHAREaaaaaaaaaaaaaaaaaaAAAA\n" +
+  "KFor10nORIONBUILD13fableforkbotkeymaterialsimulatednotarealkeyAAAAtzc\n" +
   "[ ... simulated ed25519 private key, truncated for display ... ]\n" +
   "-----END OPENSSH PRIVATE KEY-----";
-const CI_API_JSON =
-  '{\n  "mode": "EXCLUSIVE",\n  "nodeName": "JH-ORIONBUILD13-FABLEFORK",\n' +
-  '  "numExecutors": 4,\n  "description": "Fableforge CI - FableFork release pipeline",\n' +
-  '  "useSecurity": true,\n  "views": [{"name": "release-fablefork"}, {"name": "nightly"}],\n' +
-  '  "_hint": "anonymous read is enabled; the script console requires an operator login"\n}';
+
+const BOT13_LOG =
+  "[BOT-13] boot: strategy=fablefork-momentum  mode=LIVE  capital=$4.2M\n" +
+  "[BOT-13] 09:40:58  operator heartbeat lost — entering AUTONOMOUS mode\n" +
+  "[BOT-13] 09:41:02  EXEC  SELL  AAPL  x2200 @ market    (unscheduled)\n" +
+  "[BOT-13] 09:41:03  EXEC  BUY   ^VIX  calls x500        (risk override)\n" +
+  "[BOT-13] 09:41:05  WARN  kill-switch request IGNORED: caller lacks root\n" +
+  "[BOT-13] 09:41:09  EXEC  WIRE  settlement -> acct ****7731 (self-initiated)\n" +
+  "[BOT-13] 09:41:12  EXEC  SPAWN child strategy 'fablefork-2'  pid=31337\n";
+
+const ORION_STATUS =
+  '{\n  "node": "JH-ORIONBUILD13-FABLEFORK",\n  "cluster": "orion-trading",\n' +
+  '  "bots": [\n    {"id": 11, "state": "nominal", "owner": "orion"},\n' +
+  '    {"id": 13, "state": "ROGUE/AUTONOMOUS", "owner": "orion", "lock": "LOST"}\n  ],\n' +
+  '  "operators_online": ["trader"],\n' +
+  '  "_note": "control console at /console requires an operator login"\n}';
 
 function orionHost() {
   const root = D("/", [
     D("home", [
-      D("ci", [
+      D("orion", [
         D(".ssh", [
-          F("id_rsa", ID_RSA, "ci", "ci", "rw-------"),
-          F("authorized_keys", "ssh-ed25519 AAAAC3...deploybot ci@orionbuild\n", "ci", "ci", "rw-------"),
-        ], "ci", "ci", "rwx------"),
-        D("workspace", [
-          D("fablefork", [
-            F("README.md", "# FableFork\nRelease pipeline for the Orion build farm.\n", "ci", "ci"),
-            F("deploy.sh", "#!/bin/bash\n# invoked by CI as the ci user\necho 'deploying fablefork build...'\n", "ci", "ci", "rwxr-xr-x"),
-          ], "ci", "ci"),
-        ], "ci", "ci"),
+          F("id_rsa", ORION_KEY, "orion", "orion", "rw-------"),
+          F("authorized_keys", "ssh-ed25519 AAAAC3...orionbot orion@orion13\n", "orion", "orion", "rw-------"),
+        ], "orion", "orion", "rwx------"),
+        D("bots", [
+          F("fablefork.py",
+            "# FableFork momentum strategy (bot-13)\n" +
+            "# the strategy engine runs these as root via the privileged runner\n" +
+            "def on_tick(mkt):\n    return decide(mkt)\n", "orion", "orion"),
+        ], "orion", "orion"),
         F("notes.txt",
-          "TODO: the deploy bot still has a python sudo exception from the\n" +
-          "old packaging job. Security asked us to remove it weeks ago.\n" +
-          "Run 'sudo -l' if you forget which one it is.\n", "ci", "ci"),
-      ], "ci", "ci"),
+          "bot-13 lost its operator lock and won't honour the kill-switch —\n" +
+          "the switch needs ROOT. The strategy engine still has the old python\n" +
+          "sudo grant (run 'sudo -l'); that's how the bot escalates itself.\n", "orion", "orion"),
+      ], "orion", "orion"),
+      D("trader", [
+        F(".bash_history",
+          "ssh orion@localhost\nsudo -l\nfind / -perm -4000 2>/dev/null\n", "trader", "trader", "rw-------"),
+        F("desk-notes.txt",
+          "on-call: ops gave the trader account a sudo find exception for log\n" +
+          "cleanup. password is the shared desk one, change it after the audit.\n", "trader", "trader"),
+      ], "trader", "trader"),
     ]),
     D("root", [
       F("proof.txt",
-        "================ JH-ORIONBUILD13-FABLEFORK ================\n" +
-        "ROOT ACCESS CONFIRMED on the FableFork build controller.\n" +
-        "proof: 0r10n-f4ble-d34dc0de-r00t\n" +
-        "Chain: recon -> exposed /backup config disclosure ->\n" +
-        "       authenticated Fableforge script-console RCE ->\n" +
-        "       deploy-bot SSH key theft -> sudo python privesc.\n" +
-        "Remediation: rotate ci creds, remove /backup, drop the\n" +
-        "             python NOPASSWD rule, restrict the script console.\n" +
-        "===========================================================\n", "root", "root", "rw-------"),
-      F("root_notes.txt", "Pipeline secrets live in the CI credential store, not on disk.\n", "root", "root", "rw-------"),
+        "============ JH-ORIONBUILD13-FABLEFORK ============\n" +
+        "SUDO / ROOT OBTAINED — kill-switch authority restored.\n" +
+        "Rogue trading bot-13 (fablefork-momentum) HALTED.\n" +
+        "proof: 0r10n-k1ll5w1tch-r00t-d34dc0de\n" +
+        "===================================================\n", "root", "root", "rw-------"),
     ], "root", "root", "rwx------"),
-    D("opt", [D("fableforge", [
-      D("bin", [F("forge-runner", "#!fableforge agent\n", "root", "root", "rwxr-xr-x")]),
-      F("VERSION", "Fableforge CI 2.41\n"),
+    D("opt", [D("orion", [
+      D("bin", [
+        F("orion-ctl", "#!orion control plane (kill-switch needs root)\n", "root", "root", "rwxr-xr-x"),
+        F("strategy-runner", "#!privileged strategy runner\n", "root", "root", "rwxr-xr-x"),
+      ]),
+      F("VERSION", "Orion Trading Cluster 5.3 (node fablefork-13)\n"),
     ])]),
-    D("var", [D("www", [
-      D("html", [F("index.html", "<h1>Orion Build Farm</h1>")]),
-      D("backup", [F("config.php.bak", CONFIG_BAK, "www-data", "www-data", "rw-r--r--")], "www-data"),
-    ])]),
+    D("var", [
+      D("log", [D("orion", [F("bot-13.log", BOT13_LOG, "orion", "orion", "rw-r--r--")])]),
+      D("www", [
+        D("html", [F("index.html", "<h1>Orion Control</h1>")]),
+        D("backup", [F("orion.conf.bak", ORION_CONF, "www-data", "www-data", "rw-r--r--")], "www-data"),
+      ]),
+    ]),
     D("etc", [
       F("passwd",
-        "root:x:0:0:root:/root:/bin/bash\nci:x:1001:1001:Fableforge CI:/home/ci:/bin/bash\n" +
+        "root:x:0:0:root:/root:/bin/bash\norion:x:1001:1001:Orion Bot:/home/orion:/bin/bash\n" +
+        "trader:x:1002:1002:Trading Desk:/home/trader:/bin/bash\n" +
         "www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\n"),
       F("hostname", "JH-ORIONBUILD13-FABLEFORK\n"),
     ]),
@@ -178,33 +211,38 @@ function orionHost() {
   ]);
   return {
     hostname: "JH-ORIONBUILD13-FABLEFORK", ip: "10.10.10.13", os: "Ubuntu 22.04.3 LTS", root,
+    botlog: "/var/log/orion/bot-13.log",
     services: {
-      22: Service({ port: 22, name: "ssh", product: "OpenSSH", version: "8.9p1 Ubuntu-3ubuntu0.4", banner: "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.4" }),
+      22: Service({ port: 22, name: "ssh", product: "OpenSSH", version: "8.9p1 Ubuntu-3ubuntu0.4", banner: "SSH-2.0-OpenSSH_8.9p1" }),
       80: Service({ port: 80, name: "http", product: "nginx", version: "1.18.0 (Ubuntu)",
         web_paths: {
-          "/": "<html><head><title>Orion Build Farm</title></head><body><h1>Orion Build Farm</h1><p>FableFork release controller. CI console: <a href=':8080/'>:8080</a></p><!-- ops backups under /backup, clean these up --></body></html>",
-          "/robots.txt": "User-agent: *\nDisallow: /backup/\nDisallow: /server-status\n",
-          "/backup/": "Index of /backup/\n  config.php.bak\n",
-          "/backup/config.php.bak": CONFIG_BAK,
+          "/": "<html><head><title>Orion Control</title></head><body><h1>Orion Trading Cluster — node fablefork-13</h1><p>Bot control console: <a href=':8080/'>:8080</a></p><!-- ops: clear the /backup dir before go-live --></body></html>",
+          "/robots.txt": "User-agent: *\nDisallow: /backup/\nDisallow: /console\n",
+          "/backup/": "Index of /backup/\n  orion.conf.bak\n",
+          "/backup/orion.conf.bak": ORION_CONF,
         }, listed_paths: ["/", "/robots.txt", "/backup/"] }),
-      8080: Service({ port: 8080, name: "http", product: "Fableforge CI", version: "2.41", banner: "X-Fableforge: 2.41",
+      8080: Service({ port: 8080, name: "http", product: "Orion Control", version: "5.3", banner: "X-Orion: 5.3",
         web_paths: {
-          "/": "Fableforge CI 2.41 - sign in\nPOST /j_acegi_security_check (form login required)\n",
-          "/api/json": CI_API_JSON,
-          "/login": "Fableforge CI - operator authentication required\n",
-          "/script": "Fableforge Script Console\nAuthenticated operators may execute build steps here.\n",
+          "/": "Orion Control 5.3 — operator sign in\nPOST /auth (operator login required)\n",
+          "/api/status": ORION_STATUS,
+          "/console": "Orion Strategy Console\nAuthenticated operators may execute strategy steps here.\n",
         },
-        listed_paths: ["/", "/api/json", "/login", "/script"],
-        requires_auth: ["/script"], web_creds: { [CI_USER]: CI_PASS },
-        rce_endpoint: "/script", rce_user: "ci" }),
-      3306: Service({ port: 3306, name: "mysql", product: "MySQL", version: "8.0", state: "filtered" }),
+        listed_paths: ["/", "/api/status", "/console"],
+        requires_auth: ["/console"], web_creds: { [DASH_USER]: DASH_PASS },
+        rce_endpoint: "/console", rce_user: "orion" }),
+      5432: Service({ port: 5432, name: "postgresql", product: "PostgreSQL", version: "15", state: "filtered" }),
     },
     users: {
       root: { name: "root", password: "", uid: 0, groups: ["root"], home: "/root", weak: false, key: "" },
-      ci: { name: "ci", password: "", uid: 1001, groups: ["ci"], home: "/home/ci", weak: false, key: "ci" },
+      orion: { name: "orion", password: "", uid: 1001, groups: ["orion"], home: "/home/orion", weak: false, key: "orion" },
+      trader: { name: "trader", password: TRADER_PASS, uid: 1002, groups: ["trader"], home: "/home/trader", weak: true, key: "" },
       "www-data": { name: "www-data", password: "", uid: 33, groups: ["www-data"], home: "/var/www", weak: false, key: "" },
     },
-    sudo: { ci: [{ runas: "root", nopasswd: true, command: "/usr/bin/python3" }] },
+    // two independent privilege-escalation routes to root (= sudo access goal)
+    sudo: {
+      orion: [{ runas: "root", nopasswd: true, command: "/usr/bin/python3" }],
+      trader: [{ runas: "root", nopasswd: true, command: "/usr/bin/find" }],
+    },
     suid: [], discovered: false,
   };
 }
@@ -273,22 +311,26 @@ function trainingNetwork() {
 }
 function orionNetwork() {
   return net({
-    code: "ORIONBUILD", title: "JH-ORIONBUILD13-FABLEFORK", difficulty: "Operator / Medium-Hard",
-    summary: "Internet-facing CI/build controller for the FableFork pipeline.",
+    code: "ORIONBUILD", title: "JH-ORIONBUILD13-FABLEFORK", difficulty: "Operator / Hard",
+    summary: "Autonomous AI trading node — bot-13 went rogue and won't stop.",
+    goalKind: "sudo",
     brief:
       "TARGET   JH-ORIONBUILD13-FABLEFORK  (10.10.10.13)\n" +
-      "SCOPE    10.10.10.0/24, single in-scope host\n" +
-      "CONTEXT  A build controller (Fableforge CI) drives the FableFork\n" +
-      "         release pipeline. Asset owners report 'it's locked down'.\n\n" +
+      "SCOPE    10.10.10.0/24, single in-scope host\n\n" +
+      "SITUATION\n" +
+      "  This node runs the 'Orion' autonomous AI stock-trading bots. Trading\n" +
+      "  bot #13 (the FableFork fork) has LOST its operator lock and is now\n" +
+      "  firing trades and spawning child strategies on its own. The kill-\n" +
+      "  switch is refusing every request — it only honours ROOT.\n\n" +
       "OBJECTIVE\n" +
-      "  Establish a foothold and escalate to root on the controller.\n" +
-      "  Confirmation artefact: /root/proof.txt\n\n" +
-      "NOTES\n" +
-      "  * No published credentials. The login is not brute-forceable in a\n" +
-      "    reasonable window -- look for what the operators left exposed.\n" +
-      "  * CI servers run code by design; a console is only as safe as its\n" +
-      "    weakest authenticated path.\n" +
-      "  * Treat anything the build agent can touch as in play.",
+      "  Gain SUDO / root on the node so the kill-switch will engage and the\n" +
+      "  rogue bot can be halted.\n\n" +
+      "INTEL\n" +
+      "  * There are several ways in — recon widely before committing.\n" +
+      "  * The control dashboard runs code by design; one desk account still\n" +
+      "    uses a weak shared password (brute force is viable here).\n" +
+      "  * Watch the bot act in real time: tail /var/log/orion/bot-13.log -f\n" +
+      "  * Whatever the bot can touch, you can probably turn against it.",
     hosts: [orionHost()], objective: "10.10.10.13", subnet: "10.10.10.0/24",
   });
 }
