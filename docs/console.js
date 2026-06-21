@@ -263,6 +263,7 @@
     C.hr(48);
     [["colour", cfg.colour, "ANSI colour output"],
     ["hints", cfg.hints, "inline tactical hints"],
+    ["sound", cfg.sound, "beep when a password is cracked"],
     ["operator", cfg.operator, "operator handle (prompt name)"],
     ].forEach(([k, v, d]) => C.write("  " + C.c(String(k).padEnd(10), "brightyellow") + C.c(String(v).padEnd(10), "white") + C.c(d, "grey")));
     C.write("");
@@ -273,7 +274,7 @@
   function setSetting(key, val) {
     const cfg = state.config;
     const bools = { on: true, off: false, true: true, false: false, yes: true, no: false, "1": true, "0": false };
-    if (["colour", "color", "hints"].includes(key)) {
+    if (["colour", "color", "hints", "sound"].includes(key)) {
       const k = key === "color" ? "colour" : key;
       if (!(val in bools)) { C.write(C.c("  value must be on/off.", "red")); return; }
       cfg[k] = bools[val];
@@ -338,7 +339,7 @@
     state = new GameState(cfg);
     scenarios = window.WORLD.allScenarios();
     C.clear();
-    C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell  ·  build 10", "grey"));
+    C.write(C.c("injectai", "accent", "bold") + C.c("  ·  secure shell  ·  build 11", "grey"));
     C.write(C.c("tap ", "grey") + C.tap("≡ menu", "menu", "cmd") + C.c(" · ", "grey") +
             C.tap("⌗ commands", "commands", "cmd") + C.c(" · ", "grey") +
             C.tap("AIH", "aih", "cmd") + C.c(" for guidance", "grey"));
