@@ -63,6 +63,37 @@ async function progress(label, ms = 600) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ----------------------------------------------------------------------
+ * Audio -- short beeps (e.g. when a password is cracked). iOS requires the
+ * AudioContext to be created/resumed inside a user gesture, so we unlock it
+ * on the first tap/keypress and reuse it later.
+ * -------------------------------------------------------------------- */
+let audioCtx = null;
+function unlockAudio() {
+  try {
+    if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioCtx = new AC(); }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) { /* no audio available */ }
+}
+function beep(count = 3) {
+  unlockAudio();
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const step = 0.16;
+  for (let i = 0; i < count; i++) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "square";
+    o.frequency.value = 784 + i * 130;           // ascending blips
+    const s = t0 + i * step;
+    g.gain.setValueAtTime(0.0001, s);
+    g.gain.exponentialRampToValueAtTime(0.18, s + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.13);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(s); o.stop(s + 0.14);
+  }
+}
+
+/* ----------------------------------------------------------------------
  * Input -- driven by the on-screen keyboard (and a physical one on desktop).
  * No focusable <input> exists, so the mobile OS keyboard never appears.
  * -------------------------------------------------------------------- */
@@ -195,6 +226,7 @@ function buildKeyboard() {
 
 // key presses (pointerdown for snappy, no-zoom response)
 $kb.addEventListener("pointerdown", (e) => {
+  unlockAudio();
   const b = e.target.closest("button");
   if (!b) return;
   e.preventDefault();
@@ -205,6 +237,7 @@ $kb.addEventListener("pointerdown", (e) => {
 
 // tappable command links inside the transcript
 $out.addEventListener("click", (e) => {
+  unlockAudio();
   const t = e.target.closest(".tap");
   if (!t) return;
   if (t.dataset.ins !== undefined) {
@@ -247,7 +280,7 @@ function tokenize(line) {
 /* ----------------------------------------------------------------------
  * Config persistence
  * -------------------------------------------------------------------- */
-const DEFAULT_CONFIG = { colour: true, hints: false, operator: "operator", completed: [], training_best: "" };
+const DEFAULT_CONFIG = { colour: true, hints: false, sound: true, operator: "operator", completed: [], training_best: "" };
 function loadConfig() {
   try { return Object.assign({}, DEFAULT_CONFIG, JSON.parse(localStorage.getItem("injectai_state") || "{}")); }
   catch (e) { return Object.assign({}, DEFAULT_CONFIG); }
@@ -889,6 +922,7 @@ CMD.hydra = async function (args) {
   }
   this.emit("");
   if (willCrack) {
+    if (this._cap === null && this.state.config.sound !== false) beep(4);
     this.emit(c("[" + port + "][" + service + "] host: " + host.ip + "   login: " + user +
       "   password: " + u.password, "brightgreen", "bold"));
     this.emit(c("[STATUS] password recovered after " + TOTAL + " attempts", "grey"));
