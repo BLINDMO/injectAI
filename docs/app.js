@@ -306,6 +306,7 @@ class GameState {
     this.discovered = new Set();
     this.scanned = {};
     this.sessions = [{ host: this.operatorHost, user: this.operator, cwd: this.homeNode(this.operatorHost, this.operator), label: "local" }];
+    this.killPrompted = false;
     n.hosts.forEach((h) => { if (h.discovered) this.discovered.add(h.ip); });
   }
   reachable(t) {
@@ -356,22 +357,26 @@ class Shell {
     const fn = this.CMD[name];
     if (!fn) { this.emit(name + ": command not found"); return null; }
     const sig = await fn.call(this, args, line);
-    if (this._cap === null) this.checkSudoGoal();
+    if (this._cap === null) this.checkRootGoal();
     return sig;
   }
 
-  /* objective for sudo-goal engagements: root on the in-scope host */
-  checkSudoGoal() {
+  /* sudo-goal engagements: gaining root unlocks the kill-switch, but the
+     operator must engage it manually with `orion-ctl`. */
+  checkRootGoal() {
     const net = this.state.network;
     if (!net || net.goalKind !== "sudo") return;
+    if (this.state.config.completed.includes(net.code)) return;
     const rooted = this.state.sessions.some((s) => s.host.ip === net.objective && s.user === "root");
-    if (rooted && this.state.markRooted(net.code)) {
+    if (rooted && !this.state.killPrompted) {
+      this.state.killPrompted = true;
       const h = net.find(net.objective);
       const log = h.botlog || "/var/log/orion/bot-13.log";
       write("");
-      this.emit(c("  [+] SUDO / ROOT on " + h.hostname + " — kill-switch authority restored.", "brightgreen", "bold"));
-      this.emit(c("      you can now stop the rogue bot. watch it live:", "green"));
-      this.emit("  " + tap("tail -f " + log, "tail -f " + log, "pill"));
+      this.emit(c("  [+] You are root on " + h.hostname + ". The kill-switch will now obey you —", "brightgreen", "bold"));
+      this.emit(c("      but it won't fire on its own. Engage it to halt bot-13:", "green"));
+      this.emit("  " + tap("orion-ctl kill 13", "orion-ctl kill 13", "pill") +
+        tap("watch live: tail -f " + log, "tail -f " + log, "pill"));
       write("");
     }
   }
@@ -530,6 +535,7 @@ CMD.commands = function () {
     ["privilege escalation", ["sudo -l",
       "sudo python3 -c 'import os;os.setuid(0);os.system(\"/bin/bash\")'",
       "sudo find . -exec /bin/bash \\; -quit"]],
+    ["bot control (needs root)", ["orion-ctl status", "orion-ctl kill 13"]],
     ["session", ["loot", "status", "sessions", "aih", "clear", "back"]],
   ];
   groups.forEach(([cat, cmds]) => {
@@ -647,11 +653,54 @@ CMD.tail = async function (args) {
   node.content.replace(/\n$/, "").split("\n").slice(-12).forEach((ln) => this.emit(ln));
   if (follow && this._cap === null) {
     const isBot = /bot-13|orion/.test(target);
-    const rooted = s.user === "root";
-    const lines = isBot ? botLiveLines(rooted) : ["(waiting for new data — ^C to stop)"];
+    const net = this.state.network;
+    const halted = !!(net && this.state.config.completed.includes(net.code));
+    const lines = isBot ? botLiveLines(halted) : ["(waiting for new data — ^C to stop)"];
     for (const ln of lines) { await sleep(750); this.emit(ln); }
     this.emit(c("^C", "grey"));
   }
+};
+CMD["orion-ctl"] = async function (args) {
+  const s = this.state.session;
+  const sub = (args[0] || "").toLowerCase();
+  const net = this.state.network;
+  if (!sub || sub === "status" || sub === "ps") {
+    this.emit("orion-ctl 5.3 — Orion trading control plane");
+    this.emit("  BOT  STRATEGY              STATE");
+    this.emit("  11   orion-meanrev         nominal");
+    const done = net && this.state.config.completed.includes(net.code);
+    this.emit("  13   fablefork-momentum    " + (done ? "HALTED" : c("ROGUE / AUTONOMOUS", "brightred")));
+    if (!done) this.emit(c("  engage the kill-switch with: orion-ctl kill 13   (requires root)", "grey"));
+    return;
+  }
+  if (["kill", "stop", "halt", "kill-switch", "killswitch"].includes(sub)) {
+    if (s.user !== "root") {
+      this.emit(c("orion-ctl: kill-switch DENIED — caller is '" + s.user + "', root (uid 0) required.", "red"));
+      this.emit(c("  escalate first (e.g. `sudo -l`), then re-run as root.", "grey"));
+      return;
+    }
+    if (net && this.state.config.completed.includes(net.code)) {
+      this.emit("orion-ctl: bot-13 is already HALTED.");
+      return;
+    }
+    this.emit(c("orion-ctl: authority=root(uid0) — engaging kill-switch on bot-13 ...", "white"));
+    const seq = [
+      "[BOT-13] kill-switch ENGAGED by uid=0 (root)",
+      "[BOT-13] cancelling 3 open orders ...",
+      "[BOT-13] child strategy 'fablefork-2' (pid 31337) TERMINATED",
+      "[BOT-13] AUTONOMOUS mode disabled — operator control restored",
+      "[BOT-13] state -> HALTED",
+    ];
+    for (const ln of seq) { if (this._cap === null) await sleep(450); this.emit(ln); }
+    if (net && this.state.markRooted(net.code)) {
+      write("");
+      this.emit(c("  [+] Rogue trading bot-13 HALTED. Engagement objective complete.", "brightgreen", "bold"));
+      this.emit(c("      (you still have a root shell — keep exploring, or `back` to the console)", "grey"));
+      write("");
+    }
+    return;
+  }
+  this.emit("usage: orion-ctl status | orion-ctl kill 13");
 };
 
 /* -- network tooling -- */
@@ -1021,8 +1070,8 @@ function randPw() {
 }
 
 /* Live rogue-bot activity for `tail -f` on the Orion node. */
-function botLiveLines(rooted) {
-  if (rooted) {
+function botLiveLines(halted) {
+  if (halted) {
     return [
       "[BOT-13] kill-switch ENGAGED by uid=0 (root)",
       "[BOT-13] cancelling 3 open orders ...",
@@ -1071,9 +1120,12 @@ function computeHints(state) {
   const ports = state.scanned[obj] || new Set();
   const onObj = state.sessions.filter((s) => s.host.ip === obj);
   if (onObj.some((s) => s.user === "root")) {
-    if (net.goalKind === "sudo")
-      return [{ msg: "You have root — the kill-switch will now obey. Confirm the bot is halted.", cmd: "tail -f /var/log/orion/bot-13.log" },
-        { msg: "Objective artefact:", cmd: "cat /root/proof.txt" }];
+    if (net.goalKind === "sudo") {
+      if (net.find(net.objective) && state.config.completed.includes(net.code))
+        return [{ msg: "Bot halted. Watch it stay down, or head back.", cmd: "tail -f /var/log/orion/bot-13.log" }];
+      return [{ msg: "You're root — now manually engage the kill-switch to halt bot-13.", cmd: "orion-ctl kill 13" },
+        { msg: "See its state first:", cmd: "orion-ctl status" }];
+    }
     return [{ msg: "You have root on the target. Recover the objective artefact.", cmd: "cat /root/proof.txt" }];
   }
 

@@ -168,7 +168,8 @@ function orionHost() {
         F("notes.txt",
           "bot-13 lost its operator lock and won't honour the kill-switch —\n" +
           "the switch needs ROOT. The strategy engine still has the old python\n" +
-          "sudo grant (run 'sudo -l'); that's how the bot escalates itself.\n", "orion", "orion"),
+          "sudo grant (run 'sudo -l'); that's how the bot escalates itself.\n" +
+          "to stop it once you're root:  orion-ctl kill 13\n", "orion", "orion"),
       ], "orion", "orion"),
       D("trader", [
         F(".bash_history",
