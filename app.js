@@ -913,9 +913,11 @@ Shell.prototype.sshSuccess = function (host, user, label) {
   this.emit(c("Last login: from " + this.state.session.host.ip, "grey"));
   this.state.push(host, user, label);
   this.state.discovered.add(host.ip);
-  if (this._cap === null && user !== "root" && this.state.config.hints) {
-    this.emit("  " + c("next ", "grey") + tap("sudo -l", "sudo -l", "pill") +
-      tap("id", "id", "pill") + tap("AIH", "aih", "pill"));
+  if (this._cap === null && user !== "root") {
+    this.emit(c("  foothold as " + user + " — to win you still need ROOT/SUDO. Try:", "grey"));
+    this.emit("  " + tap("sudo -l", "sudo -l", "pill") +
+      tap("find / -perm -4000 2>/dev/null", "find / -perm -4000 2>/dev/null", "pill") +
+      tap("AIH — next move", "aih", "pill"));
   }
 };
 CMD.sudo = async function (args) {
